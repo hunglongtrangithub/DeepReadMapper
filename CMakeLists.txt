@@ -11,13 +11,14 @@ add_compile_options(-Wall)
 
 # Include directories
 include_directories(
-    include
+    includes
 )
 
 
 # Define source files
 set(SOURCES
     src/main.cpp
+    src/vectorize.cpp
 )
 
 # Create executable
