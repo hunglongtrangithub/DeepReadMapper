@@ -2,6 +2,8 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+// #include <torch/torch.h>
+// #include <torch/script.h>
 
 class Vectorizer
 {
@@ -17,6 +19,18 @@ public:
           preprocessor_()
     {
         // Constructor implementation
+
+        // TODO: load model in torch
+        // torch::jit::script::Module model;
+        // try
+        // {
+        //     model = torch::jit::load("model/model_traced.pt");
+        // }
+        // catch (const c10::Error &e)
+        // {
+        //     std::cerr << "Error loading the model:\n";
+        //     return -1;
+        // }
     }
 
     std::vector<std::vector<float>> vectorize(const std::vector<std::string> &input)
