@@ -84,19 +84,28 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 {
     // This method passes the preprocessed input to the finetuned model for inference.
 
+    // Fill batch with 0s if batch_input is smaller than batch_size_
+    std::vector<std::vector<uint16_t>> padded_batch_input = batch_input;
+    size_t original_batch_size = batch_input.size();
+
+    while (padded_batch_input.size() < batch_size_)
+    {
+        padded_batch_input.push_back(std::vector<uint16_t>(max_len_, 0));
+    }
+
     // Transpose batch
-    std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(batch_input);
+    std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(padded_batch_input);
 
     // Cast to int64_t for model input
     std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
 
-    // Pass through model
-    std::vector<float> model_output = model_(input_data, {static_cast<size_t>(transposed_batch.size()), max_len_});
+    // Pass through model with fixed shape
+    std::vector<float> model_output = model_(input_data, {max_len_, batch_size_});
 
     // Reshape output into 2D batch format
-    std::vector<std::vector<float>> batch_output(batch_input.size(), std::vector<float>(model_out_size_));
+    std::vector<std::vector<float>> batch_output(original_batch_size, std::vector<float>(model_out_size_));
 
-    for (size_t i = 0; i < batch_input.size(); ++i)
+    for (size_t i = 0; i < original_batch_size; ++i)
     {
         for (size_t j = 0; j < model_out_size_; ++j)
         {
