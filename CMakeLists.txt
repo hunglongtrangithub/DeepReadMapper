@@ -24,11 +24,11 @@ include_directories(
 # Define source files
 set(SOURCES
     src/main.cpp
-    src/utils.cpp
-    src/vectorize.cpp
-    src/fast_model.cpp
-    src/preprocess.cpp
-    src/tok2index.cpp
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
 )
 
 # Create executable
