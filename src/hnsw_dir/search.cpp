@@ -1,69 +1,37 @@
-#include "config.hpp"
-#include "hnswlib.h"
+#include "search.hpp"
 
-hnswlib::HierarchicalNSW<float> *index()
+std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(hnswlib::HierarchicalNSW<float> *index, const std::vector<std::vector<float>> &query_data)
 {
-    // Build parameters
-    int dim = Config::Build::DIM;
-    int MAX_ELE = Config::Build::MAX_ELEMENTS;
-    int M = Config::Build::GPH_DEG;
-    int EFC = Config::Build::EFC;
-
-    // Initialize index
-    hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, MAX_ELE, M, EFC);
-
-    // Generate and add data
-    std::mt19937 rng;
-    rng.seed(47);
-    std::uniform_real_distribution<> distrib_real;
-    float *data = new float[dim * MAX_ELE];
-    for (int i = 0; i < dim * MAX_ELE; i++)
-    {
-        data[i] = distrib_real(rng);
-    }
-
-    for (int i = 0; i < MAX_ELE; i++)
-    {
-        alg_hnsw->addPoint(data + i * dim, i);
-    }
-
-    return alg_hnsw;
-}
-
-int search(hnswlib::HierarchicalNSW<float> *alg_hnsw)
-{
-    int ef = Config::Search::EF;
+    // Search parameters
     int k = Config::Search::K;
-    int dim = Config::Build::DIM;
-    int MAX_ELE = Config::Build::MAX_ELEMENTS;
 
-    alg_hnsw->setEf(ef);
-
-    // Generate test data
-    std::mt19937 rng;
-    rng.seed(47);
-    std::uniform_real_distribution<> distrib_real;
-    float *data = new float[dim * MAX_ELE];
-    for (int i = 0; i < dim * MAX_ELE; i++)
+    // Validate query data
+    if (query_data.empty())
     {
-        data[i] = distrib_real(rng);
+        throw std::runtime_error("Query data is empty");
     }
 
-    // Query with correct parameters
-    float correct = 0;
-    for (int i = 0; i < MAX_ELE; i++)
+    // Perform searches
+    std::vector<std::vector<hnswlib::labeltype>> results;
+    std::vector<std::vector<float>> distances;
+
+    for (size_t i = 0; i < query_data.size(); i++)
     {
-        // ✅ USE CONFIG VALUES INSTEAD OF HARDCODED
-        auto result = alg_hnsw->searchKnn(data + i * dim, k);
-        hnswlib::labeltype label = result.top().second;
-        if (label == i)
-            correct++;
+        auto result = index->searchKnnCloserFirst(query_data[i].data(), k);
+
+        std::vector<hnswlib::labeltype> query_results;
+        std::vector<float> query_distances;
+
+        // Extract results
+        for (const auto &neighbor : result)
+        {
+            query_distances.push_back(neighbor.first); // distance
+            query_results.push_back(neighbor.second);  // label/id
+        }
+
+        results.push_back(query_results);
+        distances.push_back(query_distances);
     }
 
-    float recall = correct / MAX_ELE;
-    std::cout << "Recall: " << recall << "\n";
-
-    delete[] data;
-    return 0;
+    return std::make_pair(results, distances);
 }

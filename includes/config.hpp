@@ -1,17 +1,26 @@
 #pragma once
 
-#include <cstddef> // for size_t
+#include <string>
+#include <cstddef>
 
 namespace Config
 {
     // Enable verbose logging for debugging
     constexpr const bool VERBOSE = true;
 
+    namespace Inference
+    {
+        constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
+        constexpr const size_t BATCH_SIZE = 100;
+        constexpr const size_t MAX_LEN = 123;
+        constexpr const size_t MODEL_OUT_SIZE = 128;
+    }
+
     namespace Build
     {
         // Vector Dimension
         constexpr const int DIM = 128;
-    
+
         // Exploration factor
         constexpr const int EFC = 128;
 
@@ -31,4 +40,5 @@ namespace Config
         constexpr const int EF = 100;
         constexpr const int K = 100; // K <= EF
     }
+
 }

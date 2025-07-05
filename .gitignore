@@ -41,4 +41,5 @@
 *.dwo
 
 build/
+debug/
 CMakeCache.txt

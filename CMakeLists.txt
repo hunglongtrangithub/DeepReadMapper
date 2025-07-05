@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.14)
 project(DeepAlignerCPU VERSION 1.0)
 
 # Set C++ standard
@@ -16,23 +16,54 @@ endif()
 
 find_package(OpenVINO REQUIRED)
 
+# Add hnswlib
+add_subdirectory(external/hnswlib)
+
 # Include directories
 include_directories(
     includes
+    external/hnswlib/hnswlib
 )
 
-# Define source files
-set(SOURCES
+# Define source files for pipeline executable
+set(PIPELINE_SOURCES
     src/main.cpp
+    # For Inference
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
+    # For HNSW search
+    src/hnsw_dir/search.cpp
 )
 
-# Create executable
-add_executable(pipeline ${SOURCES})
+# Create pipeline executable
+add_executable(pipeline ${PIPELINE_SOURCES})
 
-# Link OpenVINO libraries
-target_link_libraries(pipeline openvino::runtime)
+# Link libraries for pipeline
+target_link_libraries(pipeline
+    openvino::runtime
+    hnswlib
+)
+
+# Define source files for index executable
+set(INDEX_SOURCES
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+    # For HNSW indexing
+    src/hnsw_dir/index.cpp
+)
+
+# Create index executable
+add_executable(index ${INDEX_SOURCES})
+
+# Link libraries for index
+target_link_libraries(index
+    openvino::runtime
+    hnswlib
+)
