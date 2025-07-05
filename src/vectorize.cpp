@@ -1,4 +1,5 @@
 #include "vectorize.hpp"
+#include "progressbar.h"
 
 Vectorizer::Vectorizer(
     const std::string &model_path,
@@ -42,8 +43,15 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
     // [STEP 3] Inference in batches
     std::cout << "Running inference..." << std::endl;
 
+    // Hide cursor and create progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"vectorizing"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
     size_t total_sequences = input.size();
-    size_t last_progress_percent = 0;
 
     for (size_t row = 0; row < total_sequences; row += batch_size_)
     {
@@ -66,16 +74,15 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
             output[row + i] = batch_output[i];
         }
 
-        // Print progress every 5%
+        // Update progress bar
         size_t current_progress_percent = (batch_end * 100) / total_sequences;
-        if (current_progress_percent >= last_progress_percent + 5 || batch_end == total_sequences)
-        {
-            std::cout << "Progress: " << current_progress_percent << "% ("
-                      << batch_end << "/" << total_sequences << " sequences)" << std::endl;
-            last_progress_percent = current_progress_percent;
-        }
+        progressBar.set_progress(current_progress_percent);
     }
 
+    // Complete progress bar and show cursor
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+    
     std::cout << "Vectorization completed successfully!" << std::endl;
     return output;
 }

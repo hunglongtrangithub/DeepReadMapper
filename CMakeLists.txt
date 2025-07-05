@@ -24,6 +24,7 @@ include_directories(
 # Define source files
 set(SOURCES
     src/main.cpp
+    src/utils.cpp
     src/vectorize.cpp
     src/fast_model.cpp
     src/preprocess.cpp
