@@ -1,5 +1,8 @@
 #include "index.hpp"
 
+/*
+Old code with single-thread HNSWLib
+*/
 void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file)
 {
     // Build parameters

@@ -1,5 +1,9 @@
 #include "search.hpp"
 
+/*
+Old code with single-thread HNSWLib
+*/
+
 std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(hnswlib::HierarchicalNSW<float> *index, const std::vector<std::vector<float>> &query_data)
 {
     // Search parameters
