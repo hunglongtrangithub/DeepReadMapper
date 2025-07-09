@@ -1,3 +1,4 @@
+#include "cnpy.h"
 #include "config.hpp"
 #include "utils.hpp"
 #include "vectorize.hpp"
@@ -108,7 +109,7 @@ int main(int argc, char *argv[])
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[MAIN] HNSW Search completed (not implemented)" << std::endl;
+        std::cout << "[MAIN] HNSW Search completed" << std::endl;
         std::cout << "Search duration: " << duration.count() << " ms" << std::endl;
 
         // Print top results
@@ -133,6 +134,35 @@ int main(int argc, char *argv[])
             }
             std::cout << std::endl;
         }
+
+        // Save results using cnpy
+        std::cout << "[MAIN] Saving results to file..." << std::endl;
+        
+        // Convert 2D vectors to 1D flattened arrays (same format as search.cpp)
+        size_t n_rows = neighbors.size();
+        size_t k = Config::Search::K;
+        
+        // Flatten the 2D vectors into 1D arrays
+        std::vector<uint32_t> host_indices(n_rows * k);
+        std::vector<float> host_distances(n_rows * k);
+        
+        for (size_t i = 0; i < n_rows; ++i)
+        {
+            for (size_t j = 0; j < k; ++j)
+            {
+                host_indices[i * k + j] = neighbors[i][j];
+                host_distances[i * k + j] = distances[i][j];
+            }
+        }
+        
+        // Save using cnpy
+        std::string indices_file = "indices.npy";
+        std::string distances_file = "distances.npy";
+        
+        cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+        cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+        
+        std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
 
         std::cout << "\n=== Pipeline Completed Successfully! ===" << std::endl;
 

@@ -60,6 +60,7 @@ target_link_libraries(pipeline
     openvino::runtime
     OpenMP::OpenMP_CXX
     hnswlib
+    cnpy
 )
 
 # Define source files for index executable
