@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hnswlib.h"
+#include <hnswlib/hnswlib.h>
 #include "vectorize.hpp"
 #include "config.hpp"
 #include "utils.hpp"

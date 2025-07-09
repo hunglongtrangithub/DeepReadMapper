@@ -2,6 +2,7 @@
 
 #include "preprocess.hpp"
 #include "fast_model.hpp"
+#include "config.hpp"
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -20,10 +21,10 @@ public:
      * @param model_out_size Output vector size from the model.
      */
     Vectorizer(
-        const std::string &model_path = "model/finetuned_sgn33-new-a-Apr6.xml",
-        size_t batch_size = 100,
-        size_t max_len = 123,
-        size_t model_out_size = 128);
+        const std::string &model_path = Config::Inference::MODEL_PATH,
+        size_t batch_size = Config::Inference::BATCH_SIZE,
+        size_t max_len = Config::Inference::MAX_LEN,
+        size_t model_out_size = Config::Inference::MODEL_OUT_SIZE);
 
     /**
      * Vectorizes a batch of input sequences.

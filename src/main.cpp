@@ -1,7 +1,7 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "vectorize.hpp"
-#include "search.hpp"
+#include "hnswlib_dir/search.hpp"
 #include <filesystem>
 
 int main(int argc, char *argv[])

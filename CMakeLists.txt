@@ -33,6 +33,7 @@ include_directories(
     includes/hnswlib_dir
     includes/hnswm # Minh's HNSW
     external/cereal/include
+    external/cnpy
 )
 
 
@@ -88,19 +89,28 @@ target_link_libraries(index
 
 # DEFINE executable for testing HNSW from Minh's code
 set(HNSWM_BUILD_SRCS
-    src/hnswm/test_build.cpp
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+
+    # For HNSW indexing
+    src/hnswm/index.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
 )
 
 add_executable(hnswm_build ${HNSWM_BUILD_SRCS})
 target_link_libraries(hnswm_build
+    openvino::runtime
     OpenMP::OpenMP_CXX
     cnpy
 )
 
 set(HNSWM_SEARCH_SRCS
-    src/hnswm/test_search.cpp
+    src/hnswm/search.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
 )
