@@ -1,6 +1,6 @@
 #include "hnswm/index.hpp"
 
-void build(std::vector<std::vector<float>> ref_vecs, std::string index_file)
+void build(const std::vector<std::vector<float>> ref_vecs, std::string index_file)
 {
     // Parameters for HNSW
     uint32_t DIM = 128;            // Vector dimension (matches VECTOR_DIM)
@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
     // Load ref file & index file from command line arguments
     if (argc != 3)
     {
-        std::cerr << "[MAIN] Usage: " << argv[0] << " <ref_file.txt> <search.index>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ref_file.txt> <search.index>" << std::endl;
         return 1;
     }
 

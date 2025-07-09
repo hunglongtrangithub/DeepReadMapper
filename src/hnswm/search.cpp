@@ -1,143 +1,105 @@
-#include "hnsw.h"
-#include "bruteforce.h"
-#include <iostream>
-#include <vector>
-#include <random>
-#include <chrono>
-#include <algorithm>
+#include "hnswm/search.hpp"
 
-int main() {
-    // Load existing index
-    std::string filename = "hnsw_index.bin";
-    std::cout << "Loading HNSW index from " << filename << "..." << std::endl;
-    
-    // Fix: Cannot declare HNSW without constructor parameters
-    try {
-        HNSW hnsw = loadHNSW(filename);  // Move declaration inside try block
-        std::cout << "Index loaded successfully!" << std::endl;
-        hnsw.summarize();
-        
-        // Generate test queries
-        uint32_t dim = 128;
-        int numQueries = 100;
-        std::vector<std::vector<float>> queries;
-        
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
-        
-        std::cout << "Generating " << numQueries << " test queries..." << std::endl;
-        queries.reserve(numQueries);
-        for (int i = 0; i < numQueries; i++) {
-            std::vector<float> query(dim);
-            // Fix: use uint32_t for j to match dim type
-            for (uint32_t j = 0; j < dim; j++) {
-                query[j] = dis(gen);
-            }
-            queries.push_back(query);
+std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> search(const std::vector<std::vector<float>> &quer_vecs, HNSW &index)
+{
+    std::vector<std::vector<uint32_t>> node_ids(quer_vecs.size());
+    std::vector<std::vector<float>> distances(quer_vecs.size());
+
+    // Define Search Config
+    uint32_t EF = Config::Search::EF;
+
+    std::cout << "[SEARCH] Start search for " << quer_vecs.size() << " queries" << std::endl;
+
+    auto batch_results = index.searchParallel(quer_vecs, EF);
+
+    std::cout << "[SEARCH] Search completed" << std::endl;
+
+    // Reformat output data from std::vector<std::vector<search_result_t>>
+    for (size_t i = 0; i < batch_results.size(); ++i)
+    {
+        const auto &query_results = batch_results[i];
+
+        for (const auto &result : query_results)
+        {
+            distances[i].push_back(result.first); // float distance
+            node_ids[i].push_back(result.second); // nodeID_t (uint32_t)
         }
-        
-        // Test single query search
-        std::cout << "\n=== Single Query Search Test ===" << std::endl;
-        uint32_t ef = 50;
-        uint32_t k = 10;
-        
-        auto start = std::chrono::high_resolution_clock::now();
-        auto results = hnsw.search(queries[0], ef);
-        auto end = std::chrono::high_resolution_clock::now();
-        
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        std::cout << "Single search took: " << duration.count() << " μs" << std::endl;
-        std::cout << "Found " << results.size() << " results:" << std::endl;
-        
-        // Fix: Cast k to int to match comparison types
-        for (int i = 0; i < std::min((int)k, (int)results.size()); i++) {
-            std::cout << "  Rank " << (i+1) << ": Node " << results[i].second 
-                      << " (distance: " << results[i].first << ")" << std::endl;
-        }
-        
-        // Test batch parallel search
-        std::cout << "\n=== Parallel Batch Search Test ===" << std::endl;
-        
-        start = std::chrono::high_resolution_clock::now();
-        auto batch_results = hnsw.searchParallel(queries, ef);
-        end = std::chrono::high_resolution_clock::now();
-        
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "Parallel search for " << numQueries << " queries took: " 
-                  << duration.count() << " ms" << std::endl;
-        std::cout << "Average per query: " << (duration.count() * 1000.0 / numQueries) 
-                  << " μs" << std::endl;
-        
-        // Test sequential search for comparison
-        std::cout << "\n=== Sequential Search Comparison ===" << std::endl;
-        
-        start = std::chrono::high_resolution_clock::now();
-        std::vector<std::vector<search_result_t>> sequential_results;
-        for (const auto& query : queries) {
-            sequential_results.push_back(hnsw.search(query, ef));
-        }
-        end = std::chrono::high_resolution_clock::now();
-        
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "Sequential search for " << numQueries << " queries took: " 
-                  << duration.count() << " ms" << std::endl;
-        std::cout << "Average per query: " << (duration.count() * 1000.0 / numQueries) 
-                  << " μs" << std::endl;
-        
-        // Test different ef values
-        std::cout << "\n=== Search Quality vs Speed Test ===" << std::endl;
-        std::vector<uint32_t> ef_values = {10, 20, 50, 100, 200};
-        
-        for (uint32_t test_ef : ef_values) {
-            start = std::chrono::high_resolution_clock::now();
-            auto test_results = hnsw.search(queries[0], test_ef);
-            end = std::chrono::high_resolution_clock::now();
-            
-            duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-            std::cout << "ef=" << test_ef << ": " << test_results.size() 
-                      << " results in " << duration.count() << " μs" << std::endl;
-        }
-        
-        // Enable profiling to count distance calculations
-        std::cout << "\n=== Distance Calculation Profiling ===" << std::endl;
-        enableProfiling();
-        resetProfilingCounter();
-        
-        hnsw.search(queries[0], 50);
-        uint64_t dist_calcs = getCountDistCalc();
-        std::cout << "Distance calculations for ef=50: " << dist_calcs << std::endl;
-        
-        resetProfilingCounter();
-        hnsw.search(queries[0], 100);
-        dist_calcs = getCountDistCalc();
-        std::cout << "Distance calculations for ef=100: " << dist_calcs << std::endl;
-        
-        disableProfiling();
-        
-        // Test search accuracy (if you have ground truth)
-        std::cout << "\n=== Search Results Analysis ===" << std::endl;
-        auto detailed_results = hnsw.search(queries[0], 100);
-        
-        std::cout << "Distance distribution for top 20 results:" << std::endl;
-        for (int i = 0; i < std::min(20, (int)detailed_results.size()); i++) {
-            std::cout << "  " << i+1 << ": " << detailed_results[i].first << std::endl;
-        }
-        
-        // Check if distances are properly sorted (should be ascending)
-        bool is_sorted = std::is_sorted(detailed_results.begin(), detailed_results.end(),
-            [](const search_result_t& a, const search_result_t& b) {
-                return a.first < b.first;
-            });
-        
-        std::cout << "Results properly sorted: " << (is_sorted ? "YES" : "NO") << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cout << "Failed to load index: " << e.what() << std::endl;
-        std::cout << "Please run test_hnsw first to create an index." << std::endl;
+    }
+
+    return {node_ids, distances};
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
+        std::cerr << "Usage: " << argv[0] << " <quer_file.txt> <search.index>" << std::endl;
         return 1;
     }
-    
-    std::cout << "\nSearch test completed!" << std::endl;
+
+    std::string query_file = argv[1];
+    std::string index_file = argv[2];
+
+    // Load query file
+    std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
+    std::vector<std::string> sequences = read_file(query_file);
+
+    // Embed input queries
+    std::cout << "[MAIN] Start inference" << std::endl;
+    Vectorizer vectorizer; // Use default params
+
+    std::vector<std::vector<float>> quer_vecs = vectorizer.vectorize(sequences);
+    std::cout << "[MAIN] Inference completed" << std::endl;
+
+    // Load existing index
+    std::cout << "[MAIN] Loading HNSW index from " << index_file << "..." << std::endl;
+
+    HNSW index = loadHNSW(index_file);
+    std::cout << "[MAIN] Index loaded successfully!" << std::endl;
+    index.summarize();
+
+    // Test batch parallel search
+    std::cout << "[MAIN] Start Parallel Search" << std::endl;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    auto [neighbors, distances] = search(quer_vecs, index);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    size_t numQueries = quer_vecs.size();
+    std::cout << "[MAIN] Parallel search for " << numQueries << " queries took: "
+              << duration.count() << " ms" << std::endl;
+    std::cout << "Average per query: " << (duration.count() * 1000.0 / numQueries) << " μs" << std::endl;
+
+    std::cout << "[MAIN] Save results to file..." << std::endl;
+
+    // Convert 2D vectors to 1D flattened arrays (same format as main.cu)
+    size_t n_rows = neighbors.size();
+    size_t k = Config::Search::K;
+
+    // Flatten the 2D vectors into 1D arrays
+    std::vector<uint32_t> host_indices(n_rows * k);
+    std::vector<float> host_distances(n_rows * k);
+
+    for (size_t i = 0; i < n_rows; ++i)
+    {
+        for (size_t j = 0; j < k; ++j)
+        {
+            host_indices[i * k + j] = neighbors[i][j];
+            host_distances[i * k + j] = distances[i][j];
+        }
+    }
+
+    // Save using cnpy
+    std::string indices_file = "indices.npy";
+    std::string distances_file = "distances.npy";
+
+    cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+
+    cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+
+    std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
+    std::cout << "[MAIN] Parallel Search completed!" << std::endl;
+
     return 0;
 }

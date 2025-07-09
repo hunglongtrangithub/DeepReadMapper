@@ -110,6 +110,14 @@ target_link_libraries(hnswm_build
 )
 
 set(HNSWM_SEARCH_SRCS
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+
+    # FOr HNSW search
     src/hnswm/search.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
@@ -117,6 +125,7 @@ set(HNSWM_SEARCH_SRCS
 
 add_executable(hnswm_search ${HNSWM_SEARCH_SRCS})
 target_link_libraries(hnswm_search
+    openvino::runtime
     OpenMP::OpenMP_CXX
     cnpy
 )
