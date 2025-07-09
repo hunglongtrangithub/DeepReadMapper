@@ -38,12 +38,12 @@ int main(int argc, char *argv[])
 {
     if (argc != 3)
     {
-        std::cerr << "Usage: " << argv[0] << " <search.index> <ref_seq.txt>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index>" << std::endl;
         return 1;
     }
 
-    std::string index_file = argv[1];
-    std::string ref_file = argv[2];
+    std::string ref_file = argv[1];
+    std::string index_file = argv[2];
 
     // Config inference parameters
     const std::string model_path = Config::Inference::MODEL_PATH;

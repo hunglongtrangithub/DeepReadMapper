@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <chrono>
 
 /// @brief Build an HNSW index from input data (using HNSWLib).
 /// @param input_data A 2D array of input vectors, where each vector is a 1D array of floats.

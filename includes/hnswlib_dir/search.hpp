@@ -5,8 +5,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <omp.h>
 
-/// @brief Search for nearest neighbors in an HNSW index (using HNSWLib).
+/// @brief Parallel search for nearest neighbors in an HNSW index using HNSWLib and OpenMP.
 /// @param index A HNSW index object.
 /// @param query_data  A 2D array of query vectors, where each vector is a 1D array of floats.
 /// @return A pair of 1D arrays, 1st contain neighbor_ids, 2nd contain respective distances.
