@@ -11,21 +11,21 @@ This repository is an opitmized version of DeepAligner CPU Pipeline to locate si
 
 1. Create conda environment
 
-```bash
-conda create -f environment.yml
-conda activate DeepAligner
-```
+    ```bash
+    conda create -f environment.yml
+    conda activate DeepAligner
+    ```
 
 2. Install external libraries
 
-```bash
-bash setup_hnswlib.sh
-```
+    ```bash
+    bash setup_submodule.sh
+    ```
 
 3. Build the project
 
-```bash
-mkdir build && cd build
-cmake ..
-make -j32
-```
+    ```bash
+    mkdir build && cd build
+    cmake ..
+    make -j32
+    ```

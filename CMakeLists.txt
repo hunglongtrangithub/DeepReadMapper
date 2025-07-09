@@ -22,6 +22,7 @@ find_package(OpenMP REQUIRED)
 
 # Add hnswlib
 add_subdirectory(external/hnswlib)
+add_subdirectory(external/cnpy)
 
 # Include directories
 include_directories(
@@ -31,7 +32,6 @@ include_directories(
     includes/utils
     includes/hnswlib_dir
     includes/hnswm # Minh's HNSW
-    external/hnswlib/hnswlib
     external/cereal/include
 )
 
@@ -57,8 +57,8 @@ add_executable(pipeline ${PIPELINE_SOURCES})
 # Link libraries for pipeline
 target_link_libraries(pipeline
     openvino::runtime
-    hnswlib
     OpenMP::OpenMP_CXX
+    hnswlib
 )
 
 # Define source files for index executable
@@ -81,20 +81,22 @@ add_executable(index ${INDEX_SOURCES})
 # Link libraries for index
 target_link_libraries(index
     openvino::runtime
-    hnswlib
     OpenMP::OpenMP_CXX
+    hnswlib
+    cnpy
 )
 
 # DEFINE executable for testing HNSW from Minh's code
-set(HNSWM_INDEX_SRCS
+set(HNSWM_BUILD_SRCS
     src/hnswm/test_build.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
 )
 
-add_executable(test_hnsw ${HNSWM_INDEX_SRCS})
-target_link_libraries(test_hnsw
+add_executable(hnswm_build ${HNSWM_BUILD_SRCS})
+target_link_libraries(hnswm_build
     OpenMP::OpenMP_CXX
+    cnpy
 )
 
 set(HNSWM_SEARCH_SRCS
@@ -103,7 +105,8 @@ set(HNSWM_SEARCH_SRCS
     src/hnswm/bruteforce.cpp
 )
 
-add_executable(test_hnsw_search ${HNSWM_SEARCH_SRCS})
-target_link_libraries(test_hnsw_search
+add_executable(hnswm_search ${HNSWM_SEARCH_SRCS})
+target_link_libraries(hnswm_search
     OpenMP::OpenMP_CXX
+    cnpy
 )

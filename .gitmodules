@@ -1,6 +1,9 @@
 [submodule "external/hnswlib"]
-	path = external/hnswlib
-	url = https://github.com/nmslib/hnswlib.git
+    path = external/hnswlib
+    url = https://github.com/nmslib/hnswlib.git
 [submodule "external/cereal"]
-	path = external/cereal
-	url = https://github.com/USCiLab/cereal.git
+    path = external/cereal
+    url = https://github.com/USCiLab/cereal.git
+[submodule "external/cnpy"]
+	path = external/cnpy
+	url = https://github.com/rogersce/cnpy.git
