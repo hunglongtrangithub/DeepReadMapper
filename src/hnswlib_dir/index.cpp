@@ -1,8 +1,5 @@
 #include "hnswlib_dir/index.hpp"
 
-/*
-Old code with single-thread HNSWLib
-*/
 void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file)
 {
     // Build parameters
@@ -21,16 +18,32 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
     hnswlib::L2Space space(dim);
     hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, num_elements, M, EFC);
 
+    // Hide cursor and create progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"building index"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
     // Add data to index
     for (size_t i = 0; i < num_elements; i++)
     {
         alg_hnsw->addPoint(input_data[i].data(), i);
+
+        // Update progress bar
+        size_t progress_percent = ((i + 1) * 100) / num_elements;
+        progressBar.set_progress(progress_percent);
     }
+
+    // Complete progress bar and show cursor
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
 
     // Save index to file
     alg_hnsw->saveIndex(index_file);
-
     delete alg_hnsw;
+
     std::cout << "Index built and saved to: " << index_file << std::endl;
 }
 

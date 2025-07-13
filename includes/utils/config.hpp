@@ -10,7 +10,8 @@ namespace Config
 
     namespace Inference
     {
-        constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
+        // constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
+        constexpr const char MODEL_PATH[] = "/home/tam/tam-workspace/Research/Optimized-DeepAligner-CPU/models/finetuned_sgn33-new-a-Apr6.xml";
         constexpr const size_t BATCH_SIZE = 100;
         constexpr const size_t MAX_LEN = 123;
         constexpr const size_t MODEL_OUT_SIZE = 128;

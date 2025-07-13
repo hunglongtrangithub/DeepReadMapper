@@ -42,4 +42,5 @@
 
 build/
 debug/
+logs/
 CMakeCache.txt
