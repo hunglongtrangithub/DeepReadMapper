@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     try
     {
         auto master_start = std::chrono::high_resolution_clock::now();
-        std::cout << "=== DeepAligner CPU Pipeline ===" << std::endl;
+        std::cout << "=== DeepAligner CPU Pipeline ===" << std::endl << std::endl;
 
         // Read from command line arguments
         const std::string index_file = argv[1];
@@ -34,36 +34,46 @@ int main(int argc, char *argv[])
         const size_t max_len = Config::Inference::MAX_LEN;
         const size_t model_out_size = Config::Inference::MODEL_OUT_SIZE;
 
-        std::cout << "\nConfiguration:" << std::endl;
-        std::cout << "Input file: " << sequences_file << std::endl;
-        std::cout << "Model path: " << model_path << std::endl;
-        std::cout << "Batch size: " << batch_size << std::endl;
-        std::cout << "Max sequence length: " << max_len << std::endl;
-        std::cout << "Model output size: " << model_out_size << std::endl;
-        std::cout << "Indices output: " << indices_file << std::endl;
-        std::cout << "Distances output: " << distances_file << std::endl;
+        std::cout << "[MAIN] PIPELINE CONFIG:" << std::endl;
+        std::cout << "[MAIN] Input file: " << sequences_file << std::endl;
+        std::cout << "[MAIN] Model path: " << model_path << std::endl;
+        std::cout << "[MAIN] Batch size: " << batch_size << std::endl;
+        std::cout << "[MAIN] Max sequence length: " << max_len << std::endl;
+        std::cout << "[MAIN] Model output size: " << model_out_size << std::endl;
+        std::cout << "[MAIN] Indices output: " << indices_file << std::endl;
+        std::cout << "[MAIN] Distances output: " << distances_file << std::endl;
 
         
         // Read sequences from file
-        std::cout << "\n[MAIN] Reading sequences and search index from Disk" << std::endl;
+        std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
+        std::cout << "\n[MAIN] Reading sequences from Disk" << std::endl;
 
         auto start_time = std::chrono::high_resolution_clock::now();
         std::vector<std::string> sequences = read_file(sequences_file);
-
+        
         if (sequences.empty())
         {
             std::cerr << "No sequences found in input file!" << std::endl;
             return 1;
         }
-
+        
         analyze_input(sequences);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        std::cout << "[MAIN] Finished data loading" << std::endl;
+        std::cout << "[MAIN] Data loaded time: " << duration.count() << " ms" << std::endl << std::endl;
 
         // Load search index
         const int dim = Config::Build::DIM;
         const int ef = Config::Search::EF;
 
-        std::cout << "[MAIN] Loading HNSW Index from: " << index_file << std::endl;
-        std::cout << "Search Config - DIM = " << dim << ", EF = " << ef << std::endl;
+        std::cout << "[MAIN] HNSW INDEX LOADING STEP" << std::endl;
+        std::cout << "\n[MAIN] Search Index Config:" << std::endl;
+        std::cout << "[MAIN] Index file: " << index_file << std::endl;
+        std::cout << "[MAIN] Dimension: " << dim << std::endl;
+        std::cout << "[MAIN] EF: " << ef << std::endl;
+
+        start_time = std::chrono::high_resolution_clock::now();
         if (!std::filesystem::exists(index_file))
         {
             throw std::runtime_error("Index file does not exist: " + index_file);
@@ -73,13 +83,14 @@ int main(int argc, char *argv[])
 
         alg_hnsw->setEf(ef);
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[MAIN] Finished loading sequences and index" << std::endl;
-        std::cout << "Data loaded time: " << duration.count() << " ms" << std::endl;
+        end_time = std::chrono::high_resolution_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        std::cout << "[MAIN] Finished loading index" << std::endl;
+        std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl << std::endl;
 
         // Initialize vectorizer
-        std::cout << "\n[MAIN] Start inference" << std::endl;
+        std::cout << "\n[MAIN] INFERENCE STEP" << std::endl;
         Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
 
         // Run vectorization
@@ -92,9 +103,10 @@ int main(int argc, char *argv[])
 
         // Print results
         std::cout << "[MAIN] Inference completed" << std::endl;
-        std::cout << "Inference time: " << duration.count() << " ms" << std::endl;
+        std::cout << "[MAIN] Inference time: " << duration.count() << " ms" << std::endl << std::endl;
 
-        std::cout << "[MAIN] Starting HNSW Search" << std::endl;
+        std::cout << "[MAIN] HNSW SEARCH STEP" << std::endl;
+        std::cout << "[MAIN] Searching for nearest neighbors..." << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
         auto [neighbors, distances] = search(alg_hnsw, embeddings);
@@ -102,10 +114,10 @@ int main(int argc, char *argv[])
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] HNSW Search completed" << std::endl;
-        std::cout << "Search time: " << duration.count() << " ms" << std::endl;
+        std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl << std::endl;
 
         // Save results using cnpy
-        std::cout << "[MAIN] Saving results to file..." << std::endl;
+        std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
         
         // Convert 2D vectors to 1D flattened arrays (same format as search.cpp)
@@ -137,9 +149,9 @@ int main(int argc, char *argv[])
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
-        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl;
+        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl << std::endl;
 
-        std::cout << "\n=== Pipeline Completed Successfully! ===" << std::endl;
+        std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
 
         // Clean up
         delete alg_hnsw;
