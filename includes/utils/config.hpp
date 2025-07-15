@@ -15,6 +15,8 @@ namespace Config
         constexpr const size_t BATCH_SIZE = 100;
         constexpr const size_t MAX_LEN = 123;
         constexpr const size_t MODEL_OUT_SIZE = 128;
+        constexpr const size_t NUM_THREADS = 8;
+        constexpr const size_t NUM_STREAMS = 4; // OpenVino streams
     }
 
     namespace Build

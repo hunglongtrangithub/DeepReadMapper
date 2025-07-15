@@ -93,7 +93,7 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 
     // Add timer for each step to debug performance
 
-    auto start = std::chrono::high_resolution_clock::now();
+    // auto start = std::chrono::high_resolution_clock::now();
 
     // Fill batch with 0s if batch_input is smaller than batch_size_
     std::vector<std::vector<uint16_t>> padded_batch_input = batch_input;
@@ -104,34 +104,34 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
         padded_batch_input.push_back(std::vector<uint16_t>(max_len_, 0));
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    // auto end = std::chrono::high_resolution_clock::now();
 
-    auto pad_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // auto pad_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    start = std::chrono::high_resolution_clock::now();
+    // start = std::chrono::high_resolution_clock::now();
     // Transpose batch
     std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(padded_batch_input);
 
-    end = std::chrono::high_resolution_clock::now();
+    // end = std::chrono::high_resolution_clock::now();
     
-    auto transpose_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // auto transpose_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    start = std::chrono::high_resolution_clock::now();
+    // start = std::chrono::high_resolution_clock::now();
     // Cast to int64_t for model input
     std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
 
-    end = std::chrono::high_resolution_clock::now();
-    auto cast_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // end = std::chrono::high_resolution_clock::now();
+    // auto cast_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    start = std::chrono::high_resolution_clock::now();
+    // start = std::chrono::high_resolution_clock::now();
 
     // Pass through model with fixed shape
     std::vector<float> model_output = model_(input_data, {max_len_, batch_size_});
 
-    end = std::chrono::high_resolution_clock::now();
-    auto inference_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // end = std::chrono::high_resolution_clock::now();
+    // auto inference_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    start = std::chrono::high_resolution_clock::now();
+    // start = std::chrono::high_resolution_clock::now();
     // Reshape output into 2D batch format
     std::vector<std::vector<float>> batch_output(original_batch_size, std::vector<float>(model_out_size_));
 
@@ -142,26 +142,22 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
             batch_output[i][j] = model_output[i * model_out_size_ + j];
         }
     }
-    end = std::chrono::high_resolution_clock::now();
-    auto reshape_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // end = std::chrono::high_resolution_clock::now();
+    // auto reshape_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    std::cout << "Process time per batch: " << std::endl;
-    std::cout << "Batch size: " << original_batch_size << ", "
-              << "Max length: " << max_len_ << ", "
-              << "Model output size: " << model_out_size_ << std::endl;
-
+    // std::cout << "Process time per batch: " << std::endl;
     // Convert time to microsec/query for each step
-    pad_time = (pad_time * 1000.0) / original_batch_size;
-    transpose_time = (transpose_time * 1000.0) / original_batch_size;
-    cast_time = (cast_time * 1000.0) / original_batch_size;
-    inference_time = (inference_time * 1000.0) / original_batch_size;
-    reshape_time = (reshape_time * 1000.0) / original_batch_size;
+    // pad_time = (pad_time * 1000.0) / original_batch_size;
+    // transpose_time = (transpose_time * 1000.0) / original_batch_size;
+    // cast_time = (cast_time * 1000.0) / original_batch_size;
+    // inference_time = (inference_time * 1000.0) / original_batch_size;
+    // reshape_time = (reshape_time * 1000.0) / original_batch_size;
     
-    std::cout << "Padding time: " << pad_time << " microsec/query" << std::endl;
-    std::cout << "Transposing time: " << transpose_time << " microsec/query" << std::endl;
-    std::cout << "Casting time: " << cast_time << " microsec/query" << std::endl;
-    std::cout << "Inference time: " << inference_time << " microsec/query" << std::endl;
-    std::cout << "Reshaping time: " << reshape_time << " microsec/query" << std::endl;
+    // std::cout << "Padding time: " << pad_time << " microsec/query" << std::endl;
+    // std::cout << "Transposing time: " << transpose_time << " microsec/query" << std::endl;
+    // std::cout << "Casting time: " << cast_time << " microsec/query" << std::endl;
+    // std::cout << "Inference time: " << inference_time << " microsec/query" << std::endl;
+    // std::cout << "Reshaping time: " << reshape_time << " microsec/query" << std::endl;
 
     return batch_output;
 }

@@ -4,8 +4,16 @@ FastModel::FastModel(const std::string &model_path) : model_path(model_path)
 {
     try
     {
+        // Use Multi-threaded to parallel OpenVino layers (pipelining)
+        // ov::AnyMap config = {
+        //     ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT)
+        //     // ov::inference_num_threads(Config::Inference::NUM_THREADS),
+        //     //  ov::streams::num(Config::Inference::NUM_STREAMS)
+        // };
+
         // Load the network in Inference Engine
         auto model = core.read_model(model_path);
+        // compiled_model = core.compile_model(model, "CPU", config);
         compiled_model = core.compile_model(model, "CPU");
 
         // Get output layer
@@ -39,8 +47,12 @@ std::vector<float> FastModel::operator()(const std::vector<int64_t> &input_data,
         ov::InferRequest infer_request = compiled_model.create_infer_request();
         infer_request.set_input_tensor(input_tensor);
 
-        // Run inference
+        // Run inference (synchronous)
         infer_request.infer();
+
+        // Run inference (async)
+        // infer_request.start_async();
+        // infer_request.wait();
 
         // Get output tensor - use index 0 instead of output_layer
         auto output_tensor = infer_request.get_output_tensor(0);

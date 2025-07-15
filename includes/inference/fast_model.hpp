@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.hpp"
 #include <openvino/openvino.hpp>
 #include <string>
 #include <vector>
