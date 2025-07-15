@@ -33,13 +33,16 @@ namespace Config
 
     namespace Search
     {
-        // Batch during search, turn on for large datasets
+        // Batch during search, turn on for large datasets (Not use for now)
         constexpr const bool ENABLE_BATCH = false;
         constexpr const int BATCH_SIZE = 128;
 
         // Search parameters
-        constexpr const int EF = 100;
-        constexpr const int K = 100; // K <= EF
+        constexpr const int EF = 128;
+        constexpr const int K = 128; // K <= EF
+
+        // Multi-threaded search parameters
+        constexpr const int NUM_THREADS = 128; // Number of threads for parallel search
     }
 
 }

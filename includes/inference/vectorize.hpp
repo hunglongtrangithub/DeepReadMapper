@@ -1,7 +1,9 @@
 #pragma once
 
+#include "progressbar.h"
 #include "preprocess.hpp"
 #include "fast_model.hpp"
+#include "utils.hpp"
 #include "config.hpp"
 #include <vector>
 #include <string>

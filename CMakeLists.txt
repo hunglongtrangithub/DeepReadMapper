@@ -52,7 +52,7 @@ set(PIPELINE_SOURCES
     src/hnswm/bruteforce.cpp
 )
 
-# Create pipeline executable
+# Create pipeline executable (for inference + HNSW search)
 add_executable(pipeline ${PIPELINE_SOURCES})
 
 # Link libraries for pipeline
@@ -86,6 +86,21 @@ target_link_libraries(index
     OpenMP::OpenMP_CXX
     hnswlib
     cnpy
+)
+
+# DEFINE executable for testing inference only
+set(INFERENCE_SRCS
+    src/test_inference.cpp
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+)
+
+add_executable(inference ${INFERENCE_SRCS})
+target_link_libraries(inference
+    openvino::runtime
 )
 
 # DEFINE executable for testing HNSW from Minh's code

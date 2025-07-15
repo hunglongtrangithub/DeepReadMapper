@@ -82,7 +82,7 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
     // Complete progress bar and show cursor
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
-    
+
     std::cout << "Vectorization completed successfully!" << std::endl;
     return output;
 }
@@ -90,6 +90,10 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
 std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vector<uint16_t>> &batch_input)
 {
     // This method passes the preprocessed input to the finetuned model for inference.
+
+    // Add timer for each step to debug performance
+
+    auto start = std::chrono::high_resolution_clock::now();
 
     // Fill batch with 0s if batch_input is smaller than batch_size_
     std::vector<std::vector<uint16_t>> padded_batch_input = batch_input;
@@ -100,15 +104,34 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
         padded_batch_input.push_back(std::vector<uint16_t>(max_len_, 0));
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto pad_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    start = std::chrono::high_resolution_clock::now();
     // Transpose batch
     std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(padded_batch_input);
 
+    end = std::chrono::high_resolution_clock::now();
+    
+    auto transpose_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    start = std::chrono::high_resolution_clock::now();
     // Cast to int64_t for model input
     std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
+
+    end = std::chrono::high_resolution_clock::now();
+    auto cast_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    start = std::chrono::high_resolution_clock::now();
 
     // Pass through model with fixed shape
     std::vector<float> model_output = model_(input_data, {max_len_, batch_size_});
 
+    end = std::chrono::high_resolution_clock::now();
+    auto inference_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    start = std::chrono::high_resolution_clock::now();
     // Reshape output into 2D batch format
     std::vector<std::vector<float>> batch_output(original_batch_size, std::vector<float>(model_out_size_));
 
@@ -119,6 +142,26 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
             batch_output[i][j] = model_output[i * model_out_size_ + j];
         }
     }
+    end = std::chrono::high_resolution_clock::now();
+    auto reshape_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    std::cout << "Process time per batch: " << std::endl;
+    std::cout << "Batch size: " << original_batch_size << ", "
+              << "Max length: " << max_len_ << ", "
+              << "Model output size: " << model_out_size_ << std::endl;
+
+    // Convert time to microsec/query for each step
+    pad_time = (pad_time * 1000.0) / original_batch_size;
+    transpose_time = (transpose_time * 1000.0) / original_batch_size;
+    cast_time = (cast_time * 1000.0) / original_batch_size;
+    inference_time = (inference_time * 1000.0) / original_batch_size;
+    reshape_time = (reshape_time * 1000.0) / original_batch_size;
+    
+    std::cout << "Padding time: " << pad_time << " microsec/query" << std::endl;
+    std::cout << "Transposing time: " << transpose_time << " microsec/query" << std::endl;
+    std::cout << "Casting time: " << cast_time << " microsec/query" << std::endl;
+    std::cout << "Inference time: " << inference_time << " microsec/query" << std::endl;
+    std::cout << "Reshaping time: " << reshape_time << " microsec/query" << std::endl;
 
     return batch_output;
 }
@@ -152,19 +195,14 @@ std::vector<std::vector<uint16_t>> Vectorizer::transpose_batch(const std::vector
 std::vector<int64_t> Vectorizer::cast_to_int64(const std::vector<std::vector<uint16_t>> &batch_input)
 {
     // Helper function to cast batch input to int64_t
-    std::vector<int64_t> casted_data;
+    size_t total_size = batch_input.size() * batch_input[0].size();
+    std::vector<int64_t> casted_data(total_size);
 
-    // Precalculate total size to avoid memory reallocation
-    size_t total_size = 0;
+    auto it = casted_data.begin();
     for (const auto &seq : batch_input)
     {
-        total_size += seq.size();
-    }
-    casted_data.reserve(total_size);
-
-    for (const auto &seq : batch_input)
-    {
-        casted_data.insert(casted_data.end(), seq.begin(), seq.end());
+        it = std::transform(seq.begin(), seq.end(), it, [](uint16_t val)
+                            { return static_cast<int64_t>(val); });
     }
     return casted_data;
 }

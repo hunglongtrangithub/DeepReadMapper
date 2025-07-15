@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
         
         // Read sequences from file
         std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
-        std::cout << "\n[MAIN] Reading sequences from Disk" << std::endl;
+        std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
 
         auto start_time = std::chrono::high_resolution_clock::now();
         std::vector<std::string> sequences = read_file(sequences_file);
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
         const int ef = Config::Search::EF;
 
         std::cout << "[MAIN] HNSW INDEX LOADING STEP" << std::endl;
-        std::cout << "\n[MAIN] Search Index Config:" << std::endl;
+        std::cout << "[MAIN] Search Index Config:" << std::endl;
         std::cout << "[MAIN] Index file: " << index_file << std::endl;
         std::cout << "[MAIN] Dimension: " << dim << std::endl;
         std::cout << "[MAIN] EF: " << ef << std::endl;
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl << std::endl;
 
         // Initialize vectorizer
-        std::cout << "\n[MAIN] INFERENCE STEP" << std::endl;
+        std::cout << "[MAIN] INFERENCE STEP" << std::endl;
         Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
 
         // Run vectorization
