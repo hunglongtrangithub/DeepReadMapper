@@ -53,6 +53,8 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
 
     size_t total_sequences = input.size();
 
+    /*
+    // Inference Method 1: Use existing single-batch processing
     for (size_t row = 0; row < total_sequences; row += batch_size_)
     {
         size_t batch_end = std::min(row + batch_size_, total_sequences);
@@ -78,6 +80,55 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
         size_t current_progress_percent = (batch_end * 100) / total_sequences;
         progressBar.set_progress(current_progress_percent);
     }
+    */
+
+    // Inference Method 2: Multi-batch processing
+    const size_t concurrent_batches = Config::Inference::NUM_INFER_REQUESTS;
+
+    for (size_t start_row = 0; start_row < total_sequences; start_row += batch_size_ * concurrent_batches)
+    {
+        // Prepare multiple batches for concurrent processing
+        std::vector<std::vector<std::vector<uint16_t>>> multiple_batches;
+        std::vector<size_t> batch_start_indices;
+
+        for (size_t batch_idx = 0; batch_idx < concurrent_batches; ++batch_idx)
+        {
+            size_t row = start_row + batch_idx * batch_size_;
+            if (row >= total_sequences)
+                break;
+
+            size_t batch_end = std::min(row + batch_size_, total_sequences);
+            size_t current_batch_size = batch_end - row;
+
+            std::vector<std::vector<uint16_t>> batch_input(current_batch_size);
+            for (size_t i = 0; i < current_batch_size; ++i)
+            {
+                batch_input[i] = preprocessed_inputs[row + i];
+            }
+
+            multiple_batches.push_back(batch_input);
+            batch_start_indices.push_back(row);
+        }
+
+        // Process all batches concurrently
+        std::vector<std::vector<float>> all_results = inferenceBatch(multiple_batches);
+
+        // Copy results to output array
+        size_t result_idx = 0;
+        for (size_t batch_idx = 0; batch_idx < multiple_batches.size(); ++batch_idx)
+        {
+            size_t start_idx = batch_start_indices[batch_idx];
+            for (size_t i = 0; i < multiple_batches[batch_idx].size(); ++i)
+            {
+                output[start_idx + i] = all_results[result_idx++];
+            }
+        }
+
+        // Update progress bar
+        size_t processed = std::min(start_row + batch_size_ * concurrent_batches, total_sequences);
+        size_t current_progress_percent = (processed * 100) / total_sequences;
+        progressBar.set_progress(current_progress_percent);
+    }
 
     // Complete progress bar and show cursor
     progressBar.set_progress(100);
@@ -97,7 +148,7 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 
     // Fill batch with 0s if batch_input is smaller than batch_size_
     std::vector<std::vector<uint16_t>> padded_batch_input = batch_input;
-    size_t original_batch_size = batch_input.size();
+    size_t batch_size = batch_input.size();
 
     while (padded_batch_input.size() < batch_size_)
     {
@@ -113,7 +164,7 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
     std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(padded_batch_input);
 
     // end = std::chrono::high_resolution_clock::now();
-    
+
     // auto transpose_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     // start = std::chrono::high_resolution_clock::now();
@@ -125,17 +176,21 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 
     // start = std::chrono::high_resolution_clock::now();
 
-    // Pass through model with fixed shape
-    std::vector<float> model_output = model_(input_data, {max_len_, batch_size_});
+    // Model inference (synchronous)
+    // std::vector<float> model_output = model_(input_data, {max_len_, batch_size_});
+
+    // Model inference (asynchronous)
+    auto future_result = model_.inferAsync(input_data, {max_len_, batch_size_});
+    std::vector<float> model_output = future_result.get();
 
     // end = std::chrono::high_resolution_clock::now();
     // auto inference_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     // start = std::chrono::high_resolution_clock::now();
     // Reshape output into 2D batch format
-    std::vector<std::vector<float>> batch_output(original_batch_size, std::vector<float>(model_out_size_));
+    std::vector<std::vector<float>> batch_output(batch_size, std::vector<float>(model_out_size_));
 
-    for (size_t i = 0; i < original_batch_size; ++i)
+    for (size_t i = 0; i < batch_size; ++i)
     {
         for (size_t j = 0; j < model_out_size_; ++j)
         {
@@ -147,12 +202,12 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 
     // std::cout << "Process time per batch: " << std::endl;
     // Convert time to microsec/query for each step
-    // pad_time = (pad_time * 1000.0) / original_batch_size;
-    // transpose_time = (transpose_time * 1000.0) / original_batch_size;
-    // cast_time = (cast_time * 1000.0) / original_batch_size;
-    // inference_time = (inference_time * 1000.0) / original_batch_size;
-    // reshape_time = (reshape_time * 1000.0) / original_batch_size;
-    
+    // pad_time = (pad_time * 1000.0) / batch_size;
+    // transpose_time = (transpose_time * 1000.0) / batch_size;
+    // cast_time = (cast_time * 1000.0) / batch_size;
+    // inference_time = (inference_time * 1000.0) / batch_size;
+    // reshape_time = (reshape_time * 1000.0) / batch_size;
+
     // std::cout << "Padding time: " << pad_time << " microsec/query" << std::endl;
     // std::cout << "Transposing time: " << transpose_time << " microsec/query" << std::endl;
     // std::cout << "Casting time: " << cast_time << " microsec/query" << std::endl;
@@ -160,6 +215,67 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
     // std::cout << "Reshaping time: " << reshape_time << " microsec/query" << std::endl;
 
     return batch_output;
+}
+
+std::vector<std::vector<float>> Vectorizer::inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &multiple_batches)
+{
+    /*
+    This method handle inference for multiple batches concurrently.
+    */
+
+    std::vector<std::vector<int64_t>> batch_input_data;
+    std::vector<std::vector<size_t>> batch_input_shapes;
+    std::vector<size_t> original_batch_sizes;
+
+    batch_input_data.reserve(multiple_batches.size());
+    batch_input_shapes.reserve(multiple_batches.size());
+    original_batch_sizes.reserve(multiple_batches.size());
+
+    // Prepare all batches for concurrent inference
+    for (const auto &batch : multiple_batches)
+    {
+        // Store original batch size before padding
+        original_batch_sizes.push_back(batch.size());
+
+        // Pad batch if needed
+        std::vector<std::vector<uint16_t>> padded_batch = batch;
+        while (padded_batch.size() < batch_size_)
+        {
+            padded_batch.push_back(std::vector<uint16_t>(max_len_, 0));
+        }
+
+        // Transpose and cast
+        std::vector<std::vector<uint16_t>> transposed_batch = transpose_batch(padded_batch);
+        std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
+
+        batch_input_data.push_back(input_data);
+        batch_input_shapes.push_back({max_len_, batch_size_});
+    }
+
+    // Process all batches concurrently
+    auto futures = model_.inferBatchAsync(batch_input_data, batch_input_shapes);
+
+    // Collect results from all concurrent operations
+    std::vector<std::vector<float>> all_results;
+
+    for (size_t batch_idx = 0; batch_idx < futures.size(); ++batch_idx)
+    {
+        std::vector<float> model_output = futures[batch_idx].get();
+        size_t original_size = original_batch_sizes[batch_idx];
+
+        // Reshape output into 2D batch format, only for original batch size
+        for (size_t i = 0; i < original_size; ++i)
+        {
+            std::vector<float> sequence_output(model_out_size_);
+            for (size_t j = 0; j < model_out_size_; ++j)
+            {
+                sequence_output[j] = model_output[i * model_out_size_ + j];
+            }
+            all_results.push_back(sequence_output);
+        }
+    }
+
+    return all_results;
 }
 
 std::vector<std::vector<uint16_t>> Vectorizer::transpose_batch(const std::vector<std::vector<uint16_t>> &batch_input)

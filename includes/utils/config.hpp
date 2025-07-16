@@ -7,7 +7,7 @@ namespace Config
 {
     // Enable verbose logging for debugging
     constexpr const bool VERBOSE = true;
-
+`
     namespace Inference
     {
         // constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
@@ -15,8 +15,9 @@ namespace Config
         constexpr const size_t BATCH_SIZE = 100;
         constexpr const size_t MAX_LEN = 123;
         constexpr const size_t MODEL_OUT_SIZE = 128;
-        constexpr const size_t NUM_THREADS = 8;
-        constexpr const size_t NUM_STREAMS = 4; // OpenVino streams
+        constexpr const size_t NUM_THREADS = 8;         // Number of threads used in OpenVINO inference
+        constexpr const size_t NUM_STREAMS = 4;         // OpenVino streams
+        constexpr const size_t NUM_INFER_REQUESTS = 64; // Number of inference requests handled concurrently
     }
 
     namespace Build

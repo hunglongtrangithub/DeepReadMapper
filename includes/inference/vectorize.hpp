@@ -37,6 +37,7 @@ public:
 
 private:
     std::vector<std::vector<float>> inference(const std::vector<std::vector<uint16_t>> &batch_input);
+    std::vector<std::vector<float>> inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &multiple_batches);
     std::vector<std::vector<uint16_t>> transpose_batch(const std::vector<std::vector<uint16_t>> &batch_input);
     std::vector<int64_t> cast_to_int64(const std::vector<std::vector<uint16_t>> &batch_input);
 
