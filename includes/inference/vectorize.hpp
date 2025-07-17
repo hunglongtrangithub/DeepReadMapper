@@ -37,13 +37,13 @@ public:
 
 private:
     std::vector<std::vector<float>> inference(const std::vector<std::vector<uint16_t>> &batch_input);
-    std::vector<std::vector<float>> inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &multiple_batches);
-    std::vector<std::vector<uint16_t>> transpose_batch(const std::vector<std::vector<uint16_t>> &batch_input);
+    std::vector<std::vector<float>> inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &batches);
+    std::vector<std::vector<uint16_t>> transpose(const std::vector<std::vector<uint16_t>> &batch_input);
     std::vector<int64_t> cast_to_int64(const std::vector<std::vector<uint16_t>> &batch_input);
 
     // Members
-    size_t batch_size_;
-    size_t max_len_;
+    size_t batch_size_; // Maximum number of sequences per batch. Actual batch may be smaller.
+    size_t max_len_;    // Sequence length
     size_t model_out_size_;
     Preprocessor preprocessor_;
     FastModel model_;

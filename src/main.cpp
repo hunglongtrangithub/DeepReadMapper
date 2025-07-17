@@ -10,20 +10,21 @@ int main(int argc, char *argv[])
     if (argc < 3 || argc > 5)
     {
         std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [indices_output.npy] [distances_output.npy]" << std::endl;
-        std::cerr << "  - indices_output.npy: Optional output file for indices (default: indices.npy)" << std::endl;
-        std::cerr << "  - distances_output.npy: Optional output file for distances (default: distances.npy)" << std::endl;
+        std::cerr << "  - indices_output.npy: Optional indices output file (default: indices.npy)" << std::endl;
+        std::cerr << "  - distances_output.npy: Optional distances output file (default: distances.npy)" << std::endl;
         return 1;
     }
 
     try
     {
         auto master_start = std::chrono::high_resolution_clock::now();
-        std::cout << "=== DeepAligner CPU Pipeline ===" << std::endl << std::endl;
+        std::cout << "=== DeepAligner CPU Pipeline ===" << std::endl
+                  << std::endl;
 
         // Read from command line arguments
         const std::string index_file = argv[1];
         const std::string sequences_file = argv[2];
-        
+
         // Optional output file names with defaults
         const std::string indices_file = (argc >= 4) ? argv[3] : "indices.npy";
         const std::string distances_file = (argc >= 5) ? argv[4] : "distances.npy";
@@ -43,25 +44,25 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Indices output: " << indices_file << std::endl;
         std::cout << "[MAIN] Distances output: " << distances_file << std::endl;
 
-        
         // Read sequences from file
         std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
         std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
 
         auto start_time = std::chrono::high_resolution_clock::now();
         std::vector<std::string> sequences = read_file(sequences_file);
-        
+
         if (sequences.empty())
         {
             std::cerr << "No sequences found in input file!" << std::endl;
             return 1;
         }
-        
+
         analyze_input(sequences);
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Finished data loading" << std::endl;
-        std::cout << "[MAIN] Data loaded time: " << duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Data loaded time: " << duration.count() << " ms" << std::endl
+                  << std::endl;
 
         // Load search index
         const int dim = Config::Build::DIM;
@@ -87,7 +88,8 @@ int main(int argc, char *argv[])
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
         std::cout << "[MAIN] Finished loading index" << std::endl;
-        std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl
+                  << std::endl;
 
         // Initialize vectorizer
         std::cout << "[MAIN] INFERENCE STEP" << std::endl;
@@ -103,7 +105,8 @@ int main(int argc, char *argv[])
 
         // Print results
         std::cout << "[MAIN] Inference completed" << std::endl;
-        std::cout << "[MAIN] Inference time: " << duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Inference time: " << duration.count() << " ms" << std::endl
+                  << std::endl;
 
         std::cout << "[MAIN] HNSW SEARCH STEP" << std::endl;
         std::cout << "[MAIN] Searching for nearest neighbors..." << std::endl;
@@ -114,20 +117,21 @@ int main(int argc, char *argv[])
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] HNSW Search completed" << std::endl;
-        std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
+                  << std::endl;
 
         // Save results using cnpy
         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
-        
+
         // Convert 2D vectors to 1D flattened arrays (same format as search.cpp)
         size_t n_rows = neighbors.size();
         size_t k = Config::Search::K;
-        
+
         // Flatten the 2D vectors into 1D arrays
         std::vector<uint32_t> host_indices(n_rows * k);
         std::vector<float> host_distances(n_rows * k);
-        
+
         for (size_t i = 0; i < n_rows; ++i)
         {
             for (size_t j = 0; j < k; ++j)
@@ -136,20 +140,21 @@ int main(int argc, char *argv[])
                 host_distances[i * k + j] = distances[i][j];
             }
         }
-        
+
         // Save using cnpy with configurable file names
         cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
         cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
+
         std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
-        std::cout << "Output saving time: " << duration.count() << " ms" << std::endl;
+        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
-        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
+                  << std::endl;
 
         std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
 

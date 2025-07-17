@@ -18,6 +18,16 @@ private:
     ov::CompiledModel compiled_model;
     ov::Output<const ov::Node> output_layer;
 
+    /**
+     * @brief Internal structure to hold asynchronous inference data.
+     * Used to keep inference requests and associated data alive during async operations.
+     */
+    struct AsyncInferenceData {
+        ov::InferRequest request;
+        ov::Tensor input_tensor;
+        std::vector<int64_t> input_data_copy;
+    };
+
 public:
     /**
      * @brief Constructor for FastModel.

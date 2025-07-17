@@ -6,8 +6,8 @@ FastModel::FastModel(const std::string &model_path) : model_path(model_path)
     {
         // Use Multi-threaded to parallel OpenVino layers (pipelining)
         ov::AnyMap config = {
-            ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT)
-            // ov::inference_num_threads(Config::Inference::NUM_THREADS),
+            ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT),
+            ov::inference_num_threads(Config::Inference::NUM_THREADS),
             //  ov::streams::num(Config::Inference::NUM_STREAMS)
         };
 
@@ -73,7 +73,7 @@ std::future<std::vector<float>> FastModel::inferAsync(const std::vector<int64_t>
     This method performs asynchronous inference on the model using OpenVINO's async API properly.
     */
     return std::async(std::launch::async, [this, input_data, input_shape]() -> std::vector<float>
-    {
+                      {
         try {
             // Create input tensor
             auto input_port = compiled_model.input(0);
@@ -98,65 +98,57 @@ std::future<std::vector<float>> FastModel::inferAsync(const std::vector<int64_t>
         } catch (const std::exception &e) {
             std::cerr << "Error during asynchronous inference: " << e.what() << std::endl;
             throw;
-        }
-    });
+        } });
 }
 
-std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_input_data, const std::vector<std::vector<size_t>> &batch_input_shapes)
+std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_inputs, const std::vector<std::vector<size_t>> &batch_shapes)
 {
     /*
     This method uses OpenVINO's async API properly:
     1. Create all inference requests and tensors
-    2. Start all async operations 
+    2. Start all async operations
     3. Return futures that will wait for completion when needed
     */
-    
-    // Store inference requests and their associated data
-    struct AsyncInferenceData {
-        ov::InferRequest request;
-        ov::Tensor input_tensor;
-        std::vector<int64_t> input_data_copy;
-    };
-    
+
     // Use shared_ptr to keep the data alive for the lifetime of the futures
     auto inference_data = std::make_shared<std::vector<AsyncInferenceData>>();
     std::vector<std::future<std::vector<float>>> futures;
-    
-    inference_data->reserve(batch_input_data.size());
-    futures.reserve(batch_input_data.size());
-    
+
+    inference_data->reserve(batch_inputs.size());
+    futures.reserve(batch_inputs.size());
+
     // Phase 1: Create all inference requests and tensors
-    for (size_t i = 0; i < batch_input_data.size(); ++i)
+    for (size_t i = 0; i < batch_inputs.size(); ++i)
     {
         AsyncInferenceData data;
-        
+
         // Create input tensor
         auto input_port = compiled_model.input(0);
-        data.input_tensor = ov::Tensor(input_port.get_element_type(), batch_input_shapes[i]);
-        
+        data.input_tensor = ov::Tensor(input_port.get_element_type(), batch_shapes[i]);
+
         // Copy input data (we need to keep it alive)
-        data.input_data_copy = batch_input_data[i];
+        data.input_data_copy = batch_inputs[i];
         int64_t *tensor_data = data.input_tensor.data<int64_t>();
         std::memcpy(tensor_data, data.input_data_copy.data(), data.input_data_copy.size() * sizeof(int64_t));
-        
+
         // Create inference request
         data.request = compiled_model.create_infer_request();
         data.request.set_input_tensor(data.input_tensor);
-        
+
         inference_data->push_back(std::move(data));
     }
-    
+
     // Phase 2: Start all async operations
     for (auto &data : *inference_data)
     {
         data.request.start_async();
     }
-    
+
     // Phase 3: Create futures that will wait for completion
     for (size_t i = 0; i < inference_data->size(); ++i)
     {
         futures.push_back(std::async(std::launch::deferred, [inference_data, i]() -> std::vector<float>
-        {
+                                     {
             try {
                 // Wait for this specific request to complete
                 (*inference_data)[i].request.wait();
@@ -170,9 +162,8 @@ std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const st
             } catch (const std::exception &e) {
                 std::cerr << "Error during batch async inference: " << e.what() << std::endl;
                 throw;
-            }
-        }));
+            } }));
     }
-    
+
     return futures;
 }
