@@ -1,11 +1,11 @@
 #include "hnswlib_dir/index.hpp"
 
-void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file)
+void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M, int EFC)
 {
     // Build parameters
     int dim = input_data[0].size();
-    int M = Config::Build::GPH_DEG;
-    int EFC = Config::Build::EFC;
+    int final_M = (M == -1) ? Config::Build::GPH_DEG : M;
+    int final_EFC = (EFC == -1) ? Config::Build::EFC : EFC;
     size_t num_elements = input_data.size();
 
     // Validate input data
@@ -16,7 +16,7 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
 
     // Init index
     hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, num_elements, M, EFC);
+    hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, num_elements, final_M, final_EFC);
 
     // Hide cursor and create progress bar
     indicators::show_console_cursor(false);
@@ -49,14 +49,28 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc < 3 || argc > 5)
     {
-        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index> [EFC] [M]" << std::endl;
         return 1;
     }
 
     std::string ref_file = argv[1];
     std::string index_file = argv[2];
+
+    // Parse optional EFC and M parameters
+    int custom_EFC = -1;
+    int custom_M = -1;
+
+    if (argc >= 4)
+    {
+        custom_EFC = std::stoi(argv[3]);
+    }
+
+    if (argc >= 5)
+    {
+        custom_M = std::stoi(argv[4]);
+    }
 
     // Config inference parameters
     const std::string model_path = Config::Inference::MODEL_PATH;
@@ -81,7 +95,7 @@ int main(int argc, char *argv[])
 
     std::cout << "[BUILD INDEX] Building HNSW index..." << std::endl;
     // Build index
-    build_index(embeddings, index_file);
+    build_index(embeddings, index_file, custom_M, custom_EFC);
     std::cout << "[BUILD INDEX] HNSW index built successfully!" << std::endl;
 
     return 0;
