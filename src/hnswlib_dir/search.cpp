@@ -4,13 +4,17 @@
 Multi-threaded HNSWLib search using OpenMP
 */
 
-std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(hnswlib::HierarchicalNSW<float> *index, const std::vector<std::vector<float>> &query_data)
+std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(
+    hnswlib::HierarchicalNSW<float> *index,
+    const std::vector<std::vector<float>> &query_data,
+    int k,
+    int ef)
 {
     // Config multi-threaded search parameters
     omp_set_num_threads(Config::Search::NUM_THREADS);
 
-    // Search parameters
-    int k = Config::Search::K;
+    // Set search parameters
+    index->setEf(ef);
 
     // Validate query data
     if (query_data.empty())

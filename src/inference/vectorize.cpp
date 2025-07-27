@@ -26,7 +26,14 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
 
     // [STEP 1] Preprocess the input sequences
     std::cout << "Preprocessing input for vectorization..." << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<uint16_t>> preprocessed_inputs = preprocessor_.preprocessBatch(input, max_len_);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    std::cout << "Preprocessing completed in " << duration << " ms." << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
 
     // Truncate sequences to max_len_
     for (auto &seq : preprocessed_inputs)
@@ -36,6 +43,9 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
             seq.resize(max_len_);
         }
     }
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    std::cout << "Truncation completed in " << duration << " ms." << std::endl;
 
     // [STEP 2] Initialize output array
     std::vector<std::vector<float>> output(input.size(), std::vector<float>(model_out_size_));
@@ -85,6 +95,9 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
     // Inference Method 2: Multi-batch processing
     const size_t concurrent_batches = Config::Inference::NUM_INFER_REQUESTS;
 
+    start = std::chrono::high_resolution_clock::now();
+
+
     for (size_t start_row = 0; start_row < total_sequences; start_row += batch_size_ * concurrent_batches)
     {
         // Prepare multiple batches for concurrent processing
@@ -129,6 +142,10 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
         size_t current_progress_percent = (processed * 100) / total_sequences;
         progressBar.set_progress(current_progress_percent);
     }
+
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    std::cout << "Kernel completed in " << duration << " ms." << std::endl;
 
     // Complete progress bar and show cursor
     progressBar.set_progress(100);

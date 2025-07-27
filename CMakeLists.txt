@@ -55,8 +55,35 @@ set(PIPELINE_SOURCES
 # Create pipeline executable (for inference + HNSW search)
 add_executable(pipeline ${PIPELINE_SOURCES})
 
+
 # Link libraries for pipeline
 target_link_libraries(pipeline
+    openvino::runtime
+    OpenMP::OpenMP_CXX
+    hnswlib
+    cnpy
+)
+
+# Define source files for optimized main
+set(OPTIMIZED_MAIN_SOURCES
+    src/optimized_main.cpp
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+    # For HNSW search
+    src/hnswlib_dir/search.cpp
+    src/hnswm/hnsw.cpp
+    src/hnswm/bruteforce.cpp
+)
+
+# Create optimized main executable
+add_executable(optimized_pipeline ${OPTIMIZED_MAIN_SOURCES})
+
+# Link libraries for optimized main
+target_link_libraries(optimized_pipeline
     openvino::runtime
     OpenMP::OpenMP_CXX
     hnswlib
@@ -133,7 +160,7 @@ set(HNSWM_SEARCH_SRCS
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
 
-    # FOr HNSW search
+    # For HNSW search
     src/hnswm/search.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
@@ -143,5 +170,27 @@ add_executable(hnswm_search ${HNSWM_SEARCH_SRCS})
 target_link_libraries(hnswm_search
     openvino::runtime
     OpenMP::OpenMP_CXX
+    cnpy
+)
+
+# DEFINE executable for testing HNSWLib search
+set(HNSWLIB_SEARCH_SRCS
+    src/test_search.cpp
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+
+    # For HNSW search
+    src/hnswlib_dir/search.cpp
+)
+
+add_executable(hnswlib_search ${HNSWLIB_SEARCH_SRCS})
+target_link_libraries(hnswlib_search
+    openvino::runtime
+    OpenMP::OpenMP_CXX
+    hnswlib
     cnpy
 )
