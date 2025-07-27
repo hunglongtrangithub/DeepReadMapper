@@ -6,6 +6,7 @@
 #include <string>
 #include <omp.h>
 #include <chrono>
+#include "cnpy.h"
 #include "utils.hpp"
 #include "config.hpp"
 #include "vectorize.hpp"

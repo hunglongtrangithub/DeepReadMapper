@@ -52,6 +52,31 @@ int main(int argc, char *argv[])
         std::cout << std::endl;
     }
 
+    // Save results as cnpy
+    std::cout << "[MAIN] Saving results..." << std::endl;
+    std::string indices_file = "indices.npy";
+    std::string distances_file = "distances.npy";
+    size_t n_rows = neighbors.size();
+    std::vector<uint32_t> host_indices(n_rows * k);
+    std::vector<float> host_distances(n_rows * k);
+
+    for (size_t i = 0; i < n_rows; ++i)
+    {
+        for (size_t j = 0; j < k; ++j)
+        {
+            host_indices[i * k + j] = neighbors[i][j];
+            host_distances[i * k + j] = distances[i][j];
+        }
+    }
+
+    // Save using cnpy with configurable file names
+    cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+    cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+
+    std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
+
+    std::cout <<"[MAIN] Finish search" << std::endl;
+
     delete index; // Clean up
     return 0;
 }
