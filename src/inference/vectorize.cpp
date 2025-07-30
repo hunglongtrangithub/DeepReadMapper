@@ -14,13 +14,16 @@ Vectorizer::Vectorizer(
 {
 }
 
+/**
+ * @brief Wrapper method for the entire vectorization process
+ * @details Handles the complete sequence vectorization pipeline including:
+ *          - preprocessing
+ *          - inference
+ * @param input Vector of string sequences to be vectorized
+ * @return Vector of vectorized sequences as floating-point arrays
+ */
 std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::string> &input)
 {
-    /*
-    Wrapper method, includes all steps of vectorize process:
-    - preprocessing
-    - inference
-    */
 
     std::cout << "Starting vectorization of " << input.size() << " sequences..." << std::endl;
 
@@ -97,7 +100,6 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
 
     start = std::chrono::high_resolution_clock::now();
 
-
     for (size_t start_row = 0; start_row < total_sequences; start_row += batch_size_ * concurrent_batches)
     {
         // Prepare multiple batches for concurrent processing
@@ -155,10 +157,15 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
     return output;
 }
 
+/**
+ * @brief Performs model inference on a single batch of preprocessed sequences
+ * @details This method passes the preprocessed input to the finetuned model for inference.
+ *          The process includes padding, transposing, casting, and reshaping operations.
+ * @param batch_input Vector of preprocessed sequences to perform inference on
+ * @return Vector of vectorized representations for each input sequence
+ */
 std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vector<uint16_t>> &batch_input)
 {
-    // This method passes the preprocessed input to the finetuned model for inference.
-
     // Add timer for each step to debug performance
 
     // auto start = std::chrono::high_resolution_clock::now();
@@ -186,7 +193,7 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
 
     // start = std::chrono::high_resolution_clock::now();
     // Cast to int64_t for model input
-    std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
+    std::vector<int64_t> input_data = castToInt64(transposed_batch);
 
     // end = std::chrono::high_resolution_clock::now();
     // auto cast_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -234,12 +241,16 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
     return batch_output;
 }
 
+/**
+ * @brief Performs concurrent model inference on multiple batches
+ * @details Handles inference for multiple batches concurrently to improve throughput.
+ *          The process includes padding, transposing, casting for each batch,
+ *          followed by asynchronous inference and result collection.
+ * @param batches Vector of batches, where each batch is a vector of preprocessed sequences
+ * @return Vector of all vectorized sequences from all batches
+ */
 std::vector<std::vector<float>> Vectorizer::inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &batches)
 {
-    /*
-    This method handle inference for multiple batches concurrently.
-    */
-
     std::vector<std::vector<int64_t>> batch_inputs;
     std::vector<std::vector<size_t>> batch_shapes;
     std::vector<size_t> original_batch_sizes;
@@ -263,7 +274,7 @@ std::vector<std::vector<float>> Vectorizer::inferenceBatch(const std::vector<std
 
         // Transpose and cast
         std::vector<std::vector<uint16_t>> transposed_batch = transpose(padded_batch);
-        std::vector<int64_t> input_data = cast_to_int64(transposed_batch);
+        std::vector<int64_t> input_data = castToInt64(transposed_batch);
 
         batch_inputs.push_back(input_data);
         batch_shapes.push_back({max_len_, batch_size_});
@@ -295,10 +306,14 @@ std::vector<std::vector<float>> Vectorizer::inferenceBatch(const std::vector<std
     return all_results;
 }
 
+/**
+ * @brief Helper function to transpose batch input
+ * @details Converts from [num_sequences][sequence_length] to [sequence_length][num_sequences] format
+ * @param batch_input Batch of sequences to transpose
+ * @return Transposed batch
+ */
 std::vector<std::vector<uint16_t>> Vectorizer::transpose(const std::vector<std::vector<uint16_t>> &batch_input)
 {
-    // Helper function to transpose batch input
-
     if (batch_input.empty() || batch_input[0].empty())
     {
         return {};
@@ -321,9 +336,14 @@ std::vector<std::vector<uint16_t>> Vectorizer::transpose(const std::vector<std::
     return transposed;
 }
 
-std::vector<int64_t> Vectorizer::cast_to_int64(const std::vector<std::vector<uint16_t>> &batch_input)
+/**
+ * @brief Helper function to cast batch input to int64_t
+ * @details Converts uint16_t values to int64_t as required by the model input
+ * @param batch_input Batch of sequences to cast
+ * @return Flattened vector of int64_t values
+ */
+std::vector<int64_t> Vectorizer::castToInt64(const std::vector<std::vector<uint16_t>> &batch_input)
 {
-    // Helper function to cast batch input to int64_t
     size_t total_size = batch_input.size() * batch_input[0].size();
     std::vector<int64_t> casted_data(total_size);
 
