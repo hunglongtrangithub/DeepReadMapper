@@ -38,7 +38,27 @@ public:
      * @param ef_construction Size of the dynamic candidate list during construction (EFC)
      * @param ml Level generation factor (default 1/ln(2.0))
      */
-    GannHNSW(size_t dimension, size_t max_elements, size_t M = 16, size_t ef_construction = 200, double ml = 1.0 / std::log(2.0));
+    GannHNSW(
+        size_t dimension,
+        size_t max_elements,
+        size_t M = 16,
+        size_t ef_construction = 200,
+        double ml = 1.0 / std::log(2.0))
+        : dimension_(dimension),
+          max_elements_(max_elements),
+          M_(M),
+          dmin_(M),     // dmin = M for NSW construction
+          dmax_(M * 2), // dmax = 2*M to allow for bidirectional connections
+          ef_construction_(ef_construction),
+          ml_(ml),
+          num_elements_(0),
+          max_level_(16),
+          level_generator_(std::random_device{}()),
+          level_distribution_(0.0, 1.0)
+    {
+        data_.reserve(max_elements);
+        entry_point_ = std::numeric_limits<VertexId>::max();
+    }
 
     /**
      * @brief Build an HNSW index from input data.
@@ -79,6 +99,28 @@ public:
      * @brief Get the dimensionality of feature vectors
      */
     size_t dimension() const { return dimension_; }
+
+    /**
+     * @brief A utility function to save/load the index using Cereal serialization
+     * @tparam Archive Type of the archive (binary, JSON, etc.)
+     * @param ar The archive to serialize to/from
+     */
+    template <class Archive>
+    void serialize(Archive &ar)
+    {
+        ar(cereal::make_nvp("dimension", const_cast<size_t &>(dimension_)),
+           cereal::make_nvp("max_elements", const_cast<size_t &>(max_elements_)),
+           cereal::make_nvp("M", const_cast<size_t &>(M_)),
+           cereal::make_nvp("dmin", const_cast<size_t &>(dmin_)),
+           cereal::make_nvp("dmax", const_cast<size_t &>(dmax_)),
+           cereal::make_nvp("ef_construction", const_cast<size_t &>(ef_construction_)),
+           cereal::make_nvp("ml", const_cast<double &>(ml_)),
+           cereal::make_nvp("data", data_),
+           cereal::make_nvp("layers", layers_),
+           cereal::make_nvp("entry_point", entry_point_),
+           cereal::make_nvp("num_elements", num_elements_),
+           cereal::make_nvp("max_level", max_level_));
+    }
 
 private:
     // Core GANN data structures
@@ -155,51 +197,4 @@ private:
     // Utility functions
     Distance computeDistance(const std::vector<float> &a, const std::vector<float> &b) const;
     size_t getRandomLevel() const;
-
-    // Cereal serialization methods
-    template <class Archive>
-    void serialize(Archive &ar)
-    {
-        ar(cereal::make_nvp("dimension", const_cast<size_t &>(dimension_)),
-           cereal::make_nvp("max_elements", const_cast<size_t &>(max_elements_)),
-           cereal::make_nvp("M", const_cast<size_t &>(M_)),
-           cereal::make_nvp("dmin", const_cast<size_t &>(dmin_)),
-           cereal::make_nvp("dmax", const_cast<size_t &>(dmax_)),
-           cereal::make_nvp("ef_construction", const_cast<size_t &>(ef_construction_)),
-           cereal::make_nvp("ml", const_cast<double &>(ml_)),
-           cereal::make_nvp("data", data_),
-           cereal::make_nvp("layers", layers_),
-           cereal::make_nvp("entry_point", entry_point_),
-           cereal::make_nvp("num_elements", num_elements_),
-           cereal::make_nvp("max_level", max_level_));
-    }
-
-    template <class Archive>
-    void save(Archive &ar) const
-    {
-        // Save const parameters
-        ar(dimension_, max_elements_, M_, dmin_, dmax_, ef_construction_, ml_);
-        // Save index state
-        ar(data_, layers_, entry_point_, num_elements_, max_level_);
-    }
-
-    template <class Archive>
-    void load(Archive &ar)
-    {
-        // Load const parameters (const_cast needed for deserialization)
-        ar(const_cast<size_t &>(dimension_),
-           const_cast<size_t &>(max_elements_),
-           const_cast<size_t &>(M_),
-           const_cast<size_t &>(dmin_),
-           const_cast<size_t &>(dmax_),
-           const_cast<size_t &>(ef_construction_),
-           const_cast<double &>(ml_));
-
-        // Load index state
-        ar(data_, layers_, entry_point_, num_elements_, max_level_);
-
-        // Re-initialize random generators
-        level_generator_.seed(std::random_device{}());
-        level_distribution_ = std::uniform_real_distribution<double>(0.0, 1.0);
-    }
 };

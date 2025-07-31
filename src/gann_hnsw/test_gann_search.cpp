@@ -1,15 +1,15 @@
 #include "gann_hnsw.hpp"
 #include "cnpy.h" // For saving numpy arrays
-#include "util.hpp"
+#include "utils.hpp"
 #include "vectorize.hpp"
 #include <iostream>
 #include <chrono>
 
 int main(int argc, char *argv[])
 {
-    if (argc != 5)
+    if (argc != 6)
     {
-        std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k> <num_threads>" << std::endl;
         std::cerr << "Example: " << argv[0] << " index.bin queries.txt 50 10" << std::endl;
         return 1;
     }
@@ -18,6 +18,7 @@ int main(int argc, char *argv[])
     std::string query_file = argv[2];
     int ef = std::stoi(argv[3]);
     int k = std::stoi(argv[4]);
+    int num_threads = std::stoi(argv[5]);
 
     std::cout << "[SEARCH] Loading query file: " << query_file << std::endl;
     std::vector<std::string> sequences = read_file(query_file);
@@ -58,7 +59,7 @@ int main(int argc, char *argv[])
     GannHNSW::SearchResult result;
     try
     {
-        result = index.search(embeddings, k, ef);
+        result = index.search(embeddings, k, ef, num_threads);
     }
     catch (const std::exception &e)
     {

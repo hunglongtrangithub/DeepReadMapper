@@ -1,5 +1,5 @@
 #include "gann_hnsw.hpp"
-#include "util.hpp"
+#include "utils.hpp"
 #include "vectorize.hpp"
 #include <iostream>
 #include <chrono>
@@ -14,21 +14,21 @@ int main(int argc, char *argv[])
 {
     if (argc != 6)
     {
-        std::cerr << "Usage: " << argv[0] << " <data_file> <index_file> <M> <ef_construction> <num_threads>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ref_file> <index_file> <M> <ef_construction> <num_threads>" << std::endl;
         std::cerr << "Example: " << argv[0] << " data.txt index.bin 16 200 8" << std::endl;
         return 1;
     }
 
-    std::string data_file = argv[1];
+    std::string ref_file = argv[1];
     std::string index_file = argv[2];
     int M = std::stoi(argv[3]);
     int ef_construction = std::stoi(argv[4]);
     int num_threads = std::stoi(argv[5]);
 
-    std::cout << "[BUILD] Loading data file: " << data_file << std::endl;
+    std::cout << "[BUILD] Loading data file: " << ref_file << std::endl;
     
     // Load your data (adjust this based on your data format)
-    std::vector<std::string> sequences = read_file(data_file);
+    std::vector<std::string> sequences = read_file(ref_file);
     
     // Embed input data
     std::cout << "[BUILD] Start inference for " << sequences.size() << " sequences" << std::endl;

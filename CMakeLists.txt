@@ -30,8 +30,9 @@ include_directories(
     includes
     includes/inference
     includes/utils
-    includes/hnswlib_dir
+    includes/hnswlib_dir # Original HNSW
     includes/hnswm # Minh's HNSW
+    includes/gann_hnsw # GANN's HNSW
     external/cereal/include
     external/cnpy
 )
@@ -40,16 +41,19 @@ include_directories(
 # Define source files for pipeline executable
 set(PIPELINE_SOURCES
     src/main.cpp
+
     # For Inference
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
+
     # For HNSW search
     src/hnswlib_dir/search.cpp
     src/hnswm/hnsw.cpp
     src/hnswm/bruteforce.cpp
+    src/gann_hnsw/gann_hnsw.cpp
 )
 
 # Create pipeline executable (for inference + HNSW search)
@@ -192,5 +196,46 @@ target_link_libraries(hnswlib_search
     openvino::runtime
     OpenMP::OpenMP_CXX
     hnswlib
+    cnpy
+)
+
+# DEFINE executable for testing GANN's HNSW indexing
+set(GANN_INDEX_SRCS
+    src/gann_hnsw/test_gann_build.cpp
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+
+    # For GANN's HNSW indexing
+    src/gann_hnsw/gann_hnsw.cpp
+)
+
+add_executable(gann_index ${GANN_INDEX_SRCS})
+
+target_link_libraries(gann_index
+    openvino::runtime
+    cnpy
+)
+
+# DEFINE executable for testing GANN's HNSW search
+set(GANN_SEARCH_SRCS
+    src/gann_hnsw/test_gann_search.cpp
+    # For Inference
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+
+    # For GANN's HNSW search
+    src/gann_hnsw/gann_hnsw.cpp
+)
+
+add_executable(gann_search ${GANN_SEARCH_SRCS})
+target_link_libraries(gann_search
+    openvino::runtime
     cnpy
 )

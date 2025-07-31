@@ -1,27 +1,5 @@
 #include "gann_hnsw.hpp"
 
-GannHNSW::GannHNSW(
-    size_t dimension,
-    size_t max_elements,
-    size_t M,
-    size_t ef_construction,
-    double ml)
-    : dimension_(dimension),
-      max_elements_(max_elements),
-      M_(M),
-      dmin_(M),     // dmin = M for NSW construction
-      dmax_(M * 2), // dmax = 2*M to allow for bidirectional connections
-      ef_construction_(ef_construction),
-      ml_(ml),
-      num_elements_(0),
-      max_level_(16),
-      level_generator_(std::random_device{}()),
-      level_distribution_(0.0, 1.0)
-{
-    data_.reserve(max_elements);
-    entry_point_ = std::numeric_limits<VertexId>::max();
-}
-
 /**
  * @brief Compute L2 distance between two vectors using AVX512 optimization
  * @param a First vector
@@ -526,42 +504,11 @@ void GannHNSW::computeDistanceParallel(const std::vector<float> &query, std::vec
     if (candidates.empty())
         return;
 
-    // For CPU implementation, we can use simple parallel for loop
-    // In GPU version, this would be massively parallel
-    const size_t num_candidates = candidates.size();
-    const size_t num_threads = std::thread::hardware_concurrency();
-
-    if (num_candidates < num_threads * 4)
+    // Sequential computation with optimization in computeDistance()
+    // For GPU, this could be replaced with a parallel kernel
+    for (auto &candidate : candidates)
     {
-        // Too few candidates for threading overhead
-        for (auto &candidate : candidates)
-        {
-            candidate.distance_to_query = computeDistance(query, data_[candidate.id]);
-        }
-        return;
-    }
-
-    std::vector<std::thread> threads;
-    const size_t candidates_per_thread = (num_candidates + num_threads - 1) / num_threads;
-
-    for (size_t t = 0; t < num_threads; ++t)
-    {
-        size_t start_idx = t * candidates_per_thread;
-        size_t end_idx = std::min(start_idx + candidates_per_thread, num_candidates);
-
-        if (start_idx >= num_candidates)
-            break;
-
-        threads.emplace_back([this, &query, &candidates, start_idx, end_idx]()
-                             {
-            for (size_t i = start_idx; i < end_idx; ++i) {
-                candidates[i].distance_to_query = computeDistance(query, data_[candidates[i].id]);
-            } });
-    }
-
-    for (auto &thread : threads)
-    {
-        thread.join();
+        candidate.distance_to_query = computeDistance(query, data_[candidate.id]);
     }
 }
 

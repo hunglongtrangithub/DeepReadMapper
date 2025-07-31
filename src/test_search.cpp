@@ -2,7 +2,7 @@
 #include <iostream>
 #include "cnpy.h"
 #include "hnswlib_dir/search.hpp"
-#include "util.hpp"
+#include "utils.hpp"
 #include "vectorize.hpp"
 
 int main(int argc, char *argv[])
