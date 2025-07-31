@@ -2,9 +2,18 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <fstream>
 #include <memory>
 #include <thread>
+#include <mutex>
 #include <cmath>
+#include <algorithm>
+#include <random>
+#include <stdexcept>
+#include <immintrin.h>                // For SIMD operations
+#include <cereal/archives/binary.hpp> // For serialization
+#include <cereal/types/vector.hpp>
+#include <cereal/types/string.hpp>
 
 /// @brief GannHNSW class for creating a customized, high-performance HNSW based on GANN's paper architecture.
 /// @details This class provides methods to build an HNSW index and perform advanced search operations.
@@ -79,12 +88,26 @@ private:
         std::vector<VertexId> neighbors;   // Adjacency list
         bool explored = false;             // For lazy check
         Distance distance_to_query = 0.0f; // Cached distance
+
+        // Cereal serialization
+        template <class Archive>
+        void serialize(Archive &ar)
+        {
+            ar(id, neighbors, explored, distance_to_query);
+        }
     };
 
     struct Layer
     {
         std::vector<Vertex> vertices;
         size_t level;
+
+        // Cereal serialization
+        template <class Archive>
+        void serialize(Archive &ar)
+        {
+            ar(vertices, level);
+        }
     };
 
     // GANN search arrays
@@ -103,6 +126,10 @@ private:
     const size_t ef_construction_; // Construction parameter
     const double ml_;              // Level generation factor
 
+    // GANN index params
+    const size_t dmin_;
+    const size_t dmax_;
+
     // Index data
     std::vector<std::vector<float>> data_; // ref vectors
     std::vector<Layer> layers_;            // Hierarchical layers
@@ -110,18 +137,69 @@ private:
     size_t num_elements_;                  // Current number of elements
     size_t max_level_;                     // Maximum level in hierarchy
 
-    // Core GANN algorithms
+    // Random number generation for level selection
+    mutable std::mt19937 level_generator_;
+    mutable std::uniform_real_distribution<double> level_distribution_;
+
+    // GANN index construction
     void buildLayer(size_t level, const std::vector<VertexId> &vertices, size_t num_threads);
     void buildLocalGraphsParallel(const std::vector<VertexId> &vertices, size_t level, size_t num_threads);
     void mergeLocalGraphs(size_t level);
 
     // GANN search implementation
     SearchResult searchLayer(const std::vector<float> &query, size_t k, size_t ef, size_t level, VertexId entry_point) const;
+    SearchResult searchQuery(const std::vector<float> &query, size_t k, size_t ef) const;
 
     void computeDistanceParallel(const std::vector<float> &query, std::vector<Vertex> &candidates) const;
 
     // Utility functions
     Distance computeDistance(const std::vector<float> &a, const std::vector<float> &b) const;
     size_t getRandomLevel() const;
-    VertexId selectNeighborsHeuristic(const std::vector<Vertex> &candidates, size_t M) const;
+
+    // Cereal serialization methods
+    template <class Archive>
+    void serialize(Archive &ar)
+    {
+        ar(cereal::make_nvp("dimension", const_cast<size_t &>(dimension_)),
+           cereal::make_nvp("max_elements", const_cast<size_t &>(max_elements_)),
+           cereal::make_nvp("M", const_cast<size_t &>(M_)),
+           cereal::make_nvp("dmin", const_cast<size_t &>(dmin_)),
+           cereal::make_nvp("dmax", const_cast<size_t &>(dmax_)),
+           cereal::make_nvp("ef_construction", const_cast<size_t &>(ef_construction_)),
+           cereal::make_nvp("ml", const_cast<double &>(ml_)),
+           cereal::make_nvp("data", data_),
+           cereal::make_nvp("layers", layers_),
+           cereal::make_nvp("entry_point", entry_point_),
+           cereal::make_nvp("num_elements", num_elements_),
+           cereal::make_nvp("max_level", max_level_));
+    }
+
+    template <class Archive>
+    void save(Archive &ar) const
+    {
+        // Save const parameters
+        ar(dimension_, max_elements_, M_, dmin_, dmax_, ef_construction_, ml_);
+        // Save index state
+        ar(data_, layers_, entry_point_, num_elements_, max_level_);
+    }
+
+    template <class Archive>
+    void load(Archive &ar)
+    {
+        // Load const parameters (const_cast needed for deserialization)
+        ar(const_cast<size_t &>(dimension_),
+           const_cast<size_t &>(max_elements_),
+           const_cast<size_t &>(M_),
+           const_cast<size_t &>(dmin_),
+           const_cast<size_t &>(dmax_),
+           const_cast<size_t &>(ef_construction_),
+           const_cast<double &>(ml_));
+
+        // Load index state
+        ar(data_, layers_, entry_point_, num_elements_, max_level_);
+
+        // Re-initialize random generators
+        level_generator_.seed(std::random_device{}());
+        level_distribution_ = std::uniform_real_distribution<double>(0.0, 1.0);
+    }
 };

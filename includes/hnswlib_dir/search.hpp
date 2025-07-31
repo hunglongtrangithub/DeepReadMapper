@@ -1,15 +1,10 @@
 #pragma once
 
 #include <hnswlib/hnswlib.h>
-#include <iostream>
 #include <vector>
 #include <string>
 #include <omp.h>
-#include <chrono>
-#include "cnpy.h"
-#include "utils.hpp"
 #include "config.hpp"
-#include "vectorize.hpp"
 
 /// @brief Parallel search for nearest neighbors in an HNSW index using HNSWLib and OpenMP.
 /// @param index A HNSW index object.
