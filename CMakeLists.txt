@@ -216,6 +216,7 @@ set(GANN_INDEX_SRCS
 add_executable(gann_index ${GANN_INDEX_SRCS})
 
 target_link_libraries(gann_index
+    OpenMP::OpenMP_CXX
     openvino::runtime
     cnpy
 )
@@ -236,6 +237,7 @@ set(GANN_SEARCH_SRCS
 
 add_executable(gann_search ${GANN_SEARCH_SRCS})
 target_link_libraries(gann_search
+    OpenMP::OpenMP_CXX
     openvino::runtime
     cnpy
 )

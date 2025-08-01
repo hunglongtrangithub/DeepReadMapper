@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <set>
 #include <cstdint>
 #include <fstream>
 #include <memory>
@@ -9,11 +10,14 @@
 #include <cmath>
 #include <algorithm>
 #include <random>
+#include <iostream>
 #include <stdexcept>
 #include <immintrin.h>                // For SIMD operations
 #include <cereal/archives/binary.hpp> // For serialization
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
+#include "progressbar.h"
+#include <omp.h>
 
 /// @brief GannHNSW class for creating a customized, high-performance HNSW based on GANN's paper architecture.
 /// @details This class provides methods to build an HNSW index and perform advanced search operations.
@@ -171,6 +175,7 @@ private:
     // GANN index params
     const size_t dmin_;
     const size_t dmax_;
+    std::vector<std::pair<size_t, size_t>> local_graph_partitions_; // Track partition ranges in layer
 
     // Index data
     std::vector<std::vector<float>> data_; // ref vectors
@@ -185,6 +190,16 @@ private:
 
     // GANN index construction
     void buildLayer(size_t level, const std::vector<VertexId> &vertices, size_t num_threads);
+    void buildLocalGraph(const std::vector<VertexId> &partition, std::vector<Vertex> &local_graph, size_t level);
+
+    SearchResult searchLayerForConstruction(const std::vector<float> &query, size_t k, size_t level, VertexId entry_point) const;
+    
+    void gatherScatter(std::vector<std::pair<VertexId, VertexId>> &edge_list, std::vector<size_t> &indices);
+    
+    void processBackwardEdges(Layer &layer, const std::vector<std::pair<VertexId, VertexId>> &edge_list, const std::vector<size_t> &indices);
+    void pruneConnections(Vertex &vertex);
+
+    SearchResult searchLocalGraph(const std::vector<float> &query, const std::vector<Vertex> &local_graph, size_t k) const;
     void buildLocalGraphsParallel(const std::vector<VertexId> &vertices, size_t level, size_t num_threads);
     void mergeLocalGraphs(size_t level);
 
