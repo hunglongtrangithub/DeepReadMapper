@@ -36,20 +36,6 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << "Preprocessing completed in " << duration << " ms." << std::endl;
 
-    start = std::chrono::high_resolution_clock::now();
-
-    // Truncate sequences to max_len_
-    for (auto &seq : preprocessed_inputs)
-    {
-        if (seq.size() > max_len_)
-        {
-            seq.resize(max_len_);
-        }
-    }
-    end = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Truncation completed in " << duration << " ms." << std::endl;
-
     // [STEP 2] Initialize output array
     std::vector<std::vector<float>> output(input.size(), std::vector<float>(model_out_size_));
 
