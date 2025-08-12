@@ -241,3 +241,63 @@ target_link_libraries(gann_search
     openvino::runtime
     cnpy
 )
+
+# Locate FAISS for HNSW-PQ
+# Find FAISS in conda
+find_path(FAISS_INCLUDE_DIR
+    NAMES faiss/IndexHNSW.h faiss/Index.h
+    PATHS $ENV{CONDA_PREFIX}/include
+    NO_DEFAULT_PATH
+)
+
+find_library(FAISS_LIBRARY
+    NAMES faiss
+    PATHS $ENV{CONDA_PREFIX}/lib
+    NO_DEFAULT_PATH
+)
+
+if(NOT FAISS_INCLUDE_DIR OR NOT FAISS_LIBRARY)
+    message(FATAL_ERROR "FAISS not found in conda! Please run: conda install faiss-cpu")
+endif()
+
+# Print FAISS info
+message(STATUS "FAISS include: ${FAISS_INCLUDE_DIR}")
+message(STATUS "FAISS library: ${FAISS_LIBRARY}")
+
+# DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
+set(HNSWPQ_INDEX_SRCS
+    src/hnswpq/index.cpp
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+)
+
+add_executable(hnswpq_index ${HNSWPQ_INDEX_SRCS})
+target_include_directories(hnswpq_index PRIVATE ${FAISS_INCLUDE_DIR})
+target_link_libraries(hnswpq_index
+    openvino::runtime
+    OpenMP::OpenMP_CXX
+    cnpy
+    ${FAISS_LIBRARY}
+)
+
+# DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
+set(HNSWPQ_SEARCH_SRCS
+    src/hnswpq/search.cpp
+    src/utils/utils.cpp
+    src/utils/tok2index.cpp
+    src/inference/vectorize.cpp
+    src/inference/fast_model.cpp
+    src/inference/preprocess.cpp
+)
+
+add_executable(hnswpq_search ${HNSWPQ_SEARCH_SRCS})
+target_include_directories(hnswpq_search PRIVATE ${FAISS_INCLUDE_DIR})
+target_link_libraries(hnswpq_search
+    openvino::runtime
+    OpenMP::OpenMP_CXX
+    cnpy
+    ${FAISS_LIBRARY}
+)

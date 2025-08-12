@@ -10,8 +10,8 @@ int main(int argc, char *argv[])
     if (argc < 3 || argc > 6)
     {
         std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
-        std::cerr << "  - indices_output.npy: Optional indices output file (default: indices.npy)" << std::endl;
-        std::cerr << "  - distances_output.npy: Optional distances output file (default: distances.npy)" << std::endl;
+        std::cerr << "  - indices_output.npy: Optional indices output file (accept: indices.npy or indices.bin)" << std::endl;
+        std::cerr << "  - distances_output.npy: Optional distances output file (accept: distances.npy or distances.bin)" << std::endl;
         std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
         return 1;
     }
@@ -128,19 +128,6 @@ int main(int argc, char *argv[])
         // Determine file extensions based on format
         std::string indices_output = indices_file;
         std::string distances_output = distances_file;
-
-        // Replace .npy extension with .bin if present
-        if (!use_npy)
-        {
-            if (indices_output.ends_with(".npy"))
-            {
-                indices_output = indices_output.substr(0, indices_output.length() - 4) + ".bin";
-            }
-            if (distances_output.ends_with(".npy"))
-            {
-                distances_output = distances_output.substr(0, distances_output.length() - 4) + ".bin";
-            }
-        }
 
         save_results(neighbors, distances, indices_output, distances_output, Config::Search::K, use_npy);
 

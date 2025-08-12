@@ -31,8 +31,8 @@ namespace Config
     {
         constexpr const bool ENABLE_BATCH = false; // Enable batching during search
         constexpr const int BATCH_SIZE = 128;      // Number of queries per batch
-        constexpr const int EF = 500;              // Search params. Higher EF -> more precise but slower
-        constexpr const int K = 500;               // Top K results to return, K <= EF
+        constexpr const int EF = 128;              // Search params. Higher EF -> more precise but slower
+        constexpr const int K = 128;               // Top K results to return, K <= EF
         constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
     }
 
