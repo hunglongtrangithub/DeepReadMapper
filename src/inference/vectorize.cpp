@@ -12,6 +12,7 @@ Vectorizer::Vectorizer(
       preprocessor_(),
       model_(model_path)
 {
+    data_buffer_.reserve(batch_size_ * max_len_); // Reserve space for input data
 }
 
 /**
@@ -35,20 +36,6 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << "Preprocessing completed in " << duration << " ms." << std::endl;
-
-    start = std::chrono::high_resolution_clock::now();
-
-    // Truncate sequences to max_len_
-    for (auto &seq : preprocessed_inputs)
-    {
-        if (seq.size() > max_len_)
-        {
-            seq.resize(max_len_);
-        }
-    }
-    end = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Truncation completed in " << duration << " ms." << std::endl;
 
     // [STEP 2] Initialize output array
     std::vector<std::vector<float>> output(input.size(), std::vector<float>(model_out_size_));
@@ -354,4 +341,25 @@ std::vector<int64_t> Vectorizer::castToInt64(const std::vector<std::vector<uint1
                             { return static_cast<int64_t>(val); });
     }
     return casted_data;
+}
+
+/**
+ * @brief Combined transpose and cast operation for efficiency, using data_buffer_ to eliminate allocations
+ * @details Transposes the input batch and casts to int64_t in a single pass, storing results in a flatten data_buffer_ for better cache locality
+ * @param batch_input Batch of sequences to process
+ * @return 0 meaning success, -1 meaning failure
+ */
+int Vectorizer::tranposeAndCast(const std::vector<std::vector<uint16_t>> &batch_input) {
+    size_t num_sequences = batch_input.size();
+    size_t sequence_length = batch_input[0].size();
+
+    // Single pass: transpose AND cast simultaneously
+    for (size_t seq_idx = 0; seq_idx < num_sequences; ++seq_idx) {
+        for (size_t pos = 0; pos < sequence_length; ++pos) {
+            // Direct transpose + cast in one operation
+            data_buffer_[pos * num_sequences + seq_idx] = static_cast<int64_t>(batch_input[seq_idx][pos]);
+        }
+    }
+    
+    return 0; // Success
 }

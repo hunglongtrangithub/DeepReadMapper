@@ -7,11 +7,12 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3 || argc > 5)
+    if (argc < 3 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [indices_output.npy] [distances_output.npy]" << std::endl;
-        std::cerr << "  - indices_output.npy: Optional indices output file (default: indices.npy)" << std::endl;
-        std::cerr << "  - distances_output.npy: Optional distances output file (default: distances.npy)" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [ef] [k] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
+        std::cerr << "  - indices_output.npy: Optional indices output file (accept: indices.npy or indices.bin)" << std::endl;
+        std::cerr << "  - distances_output.npy: Optional distances output file (accept: distances.npy or distances.bin)" << std::endl;
+        std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
         return 1;
     }
 
@@ -25,9 +26,13 @@ int main(int argc, char *argv[])
         const std::string index_file = argv[1];
         const std::string sequences_file = argv[2];
 
+        // Optional parameters with defaults
+        const int ef = (argc >= 4) ? std::stoi(argv[3]) : Config::Search::EF;
+        const int k = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::K;
+
         // Optional output file names with defaults
-        const std::string indices_file = (argc >= 4) ? argv[3] : "indices.npy";
-        const std::string distances_file = (argc >= 5) ? argv[4] : "distances.npy";
+        const std::string indices_file = (argc >= 6) ? argv[3] : "indices.npy";
+        const std::string distances_file = (argc >= 7) ? argv[4] : "distances.npy";
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -66,7 +71,6 @@ int main(int argc, char *argv[])
 
         // Load search index
         const int dim = Config::Build::DIM;
-        const int ef = Config::Search::EF;
 
         std::cout << "[MAIN] HNSW INDEX LOADING STEP" << std::endl;
         std::cout << "[MAIN] Search Index Config:" << std::endl;
@@ -139,9 +143,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Save using cnpy with configurable file names
-        cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
-        cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
