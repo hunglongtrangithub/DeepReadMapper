@@ -28,11 +28,11 @@ FastModel::FastModel(const std::string &model_path) : model_path(model_path)
     }
 }
 
+/*
+Method to run inference on batched preprocessed sequences.
+*/
 std::vector<float> FastModel::operator()(const std::vector<int64_t> &input_data, const std::vector<size_t> &input_shape)
 {
-    /*
-    Method to run inference on batched preprocessed sequences.
-    */
     try
     {
         // Create input tensor
@@ -101,14 +101,14 @@ std::future<std::vector<float>> FastModel::inferAsync(const std::vector<int64_t>
         } });
 }
 
-std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_inputs, const std::vector<std::vector<size_t>> &batch_shapes)
+/*
+This method uses OpenVINO's async API properly:
+1. Create all inference requests and tensors
+2. Start all async operations
+3. Return futures that will wait for completion when needed
+*/
+std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_inputs, const std::vector<size_t> &batch_shape)
 {
-    /*
-    This method uses OpenVINO's async API properly:
-    1. Create all inference requests and tensors
-    2. Start all async operations
-    3. Return futures that will wait for completion when needed
-    */
 
     // Use shared_ptr to keep the data alive for the lifetime of the futures
     auto inference_data = std::make_shared<std::vector<AsyncInferenceData>>();
@@ -124,7 +124,7 @@ std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const st
 
         // Create input tensor
         auto input_port = compiled_model.input(0);
-        data.input_tensor = ov::Tensor(input_port.get_element_type(), batch_shapes[i]);
+        data.input_tensor = ov::Tensor(input_port.get_element_type(), batch_shape);
 
         // Copy input data (we need to keep it alive)
         data.input_data_copy = batch_inputs[i];
@@ -158,6 +158,62 @@ std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const st
                 const float *output_data = output_tensor.data<float>();
                 size_t output_size = output_tensor.get_size();
                 
+                return std::vector<float>(output_data, output_data + output_size);
+            } catch (const std::exception &e) {
+                std::cerr << "Error during batch async inference: " << e.what() << std::endl;
+                throw;
+            } }));
+    }
+
+    return futures;
+}
+
+/*
+A method to perform asynchronous inference for a batch of requests using pointers.
+*/
+std::vector<std::future<std::vector<float>>> FastModel::inferBatchAsync(const std::vector<const int64_t *> &batch_ptrs, const std::vector<size_t> &batch_shape)
+{
+    auto inference_data = std::make_shared<std::vector<AsyncInferenceData>>();
+    std::vector<std::future<std::vector<float>>> futures;
+
+    inference_data->reserve(batch_ptrs.size());
+    futures.reserve(batch_ptrs.size());
+
+    // Phase 1: Create all inference requests and tensors
+    for (size_t i = 0; i < batch_ptrs.size(); ++i)
+    {
+        AsyncInferenceData data;
+
+        auto input_port = compiled_model.input(0);
+        data.input_tensor = ov::Tensor(input_port.get_element_type(), batch_shape);
+
+        // Direct memcpy from pointer (no vector copy needed)
+        int64_t *tensor_data = data.input_tensor.data<int64_t>();
+        size_t data_size = batch_shape[0] * batch_shape[1];
+        std::memcpy(tensor_data, batch_ptrs[i], data_size * sizeof(int64_t));
+
+        data.request = compiled_model.create_infer_request();
+        data.request.set_input_tensor(data.input_tensor);
+
+        inference_data->push_back(std::move(data));
+    }
+
+    // Phase 2: Start all async operations
+    for (auto &data : *inference_data)
+    {
+        data.request.start_async();
+    }
+
+    // Phase 3: Create futures that will wait for completion
+    for (size_t i = 0; i < inference_data->size(); ++i)
+    {
+        futures.push_back(std::async(std::launch::deferred, [inference_data, i]() -> std::vector<float>
+                                     {
+            try {
+                (*inference_data)[i].request.wait();
+                auto output_tensor = (*inference_data)[i].request.get_output_tensor(0);
+                const float *output_data = output_tensor.data<float>();
+                size_t output_size = output_tensor.get_size();
                 return std::vector<float>(output_data, output_data + output_size);
             } catch (const std::exception &e) {
                 std::cerr << "Error during batch async inference: " << e.what() << std::endl;

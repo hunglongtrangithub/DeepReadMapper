@@ -36,8 +36,11 @@ public:
     std::vector<std::vector<float>> vectorize(const std::vector<std::string> &input);
 
 private:
-    std::vector<std::vector<float>> inference(const std::vector<std::vector<uint16_t>> &batch_input);
     std::vector<std::vector<float>> inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &batches);
+    int prepareBatch(const std::vector<std::vector<uint16_t>> &batch, std::vector<int64_t> &buffer);
+
+    // These functions are not recommended for performance usage. Use inferenceBatch & prepareBatch instead.
+    std::vector<std::vector<float>> inference(const std::vector<std::vector<uint16_t>> &batch_input);
     std::vector<std::vector<uint16_t>> transpose(const std::vector<std::vector<uint16_t>> &batch_input);
     std::vector<int64_t> castToInt64(const std::vector<std::vector<uint16_t>> &batch_input);
 
@@ -47,4 +50,6 @@ private:
     size_t model_out_size_;
     Preprocessor preprocessor_;
     FastModel model_;
+
+    std::vector<std::vector<int64_t>> data_buffers_; // Unified buffers handled concurrently
 };
