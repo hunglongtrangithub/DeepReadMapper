@@ -7,9 +7,9 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3 || argc > 8)
+    if (argc < 3 || argc > 6)
     {
-        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [ef] [k] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
         std::cerr << "  - indices_output.npy: Optional indices output file (accept: indices.npy or indices.bin)" << std::endl;
         std::cerr << "  - distances_output.npy: Optional distances output file (accept: distances.npy or distances.bin)" << std::endl;
         std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
@@ -26,13 +26,13 @@ int main(int argc, char *argv[])
         const std::string index_file = argv[1];
         const std::string sequences_file = argv[2];
 
-        // Optional parameters with defaults
-        const int ef = (argc >= 4) ? std::stoi(argv[3]) : Config::Search::EF;
-        const int k = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::K;
-
         // Optional output file names with defaults
-        const std::string indices_file = (argc >= 6) ? argv[3] : "indices.npy";
-        const std::string distances_file = (argc >= 7) ? argv[4] : "distances.npy";
+        const std::string indices_file = (argc >= 4) ? argv[3] : "indices.npy";
+        const std::string distances_file = (argc >= 5) ? argv[4] : "distances.npy";
+
+        // const bool use_npy = (argc >= 6) ? std::string(argv[5]) == "true" : false;
+        //TODO: Add option to use bin format
+        const bool use_npy = true; // Always use npy for now
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -62,7 +62,8 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        analyze_input(sequences);
+        // analyze_input(sequences);
+
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Finished data loading" << std::endl;
@@ -71,6 +72,7 @@ int main(int argc, char *argv[])
 
         // Load search index
         const int dim = Config::Build::DIM;
+        const int ef = Config::Search::EF;
 
         std::cout << "[MAIN] HNSW INDEX LOADING STEP" << std::endl;
         std::cout << "[MAIN] Search Index Config:" << std::endl;
@@ -126,29 +128,16 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        // Convert 2D vectors to 1D flattened arrays (same format as search.cpp)
-        size_t n_rows = neighbors.size();
-        size_t k = Config::Search::K;
+        // Determine file extensions based on format
+        std::string indices_output = indices_file;
+        std::string distances_output = distances_file;
 
-        // Flatten the 2D vectors into 1D arrays
-        std::vector<uint32_t> host_indices(n_rows * k);
-        std::vector<float> host_distances(n_rows * k);
-
-        for (size_t i = 0; i < n_rows; ++i)
-        {
-            for (size_t j = 0; j < k; ++j)
-            {
-                host_indices[i * k + j] = neighbors[i][j];
-                host_distances[i * k + j] = distances[i][j];
-            }
-        }
-
-        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
+        save_results(neighbors, distances, indices_output, distances_output, Config::Search::K, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
-        std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
+        std::cout << "[MAIN] Results saved to " << indices_output << " and " << distances_output << std::endl;
         std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();

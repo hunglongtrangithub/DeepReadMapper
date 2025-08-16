@@ -221,8 +221,8 @@ void analyze_input(const std::vector<std::string> &sequences)
               << std::endl;
 }
 
-bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
-                  const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string distances_file, size_t k, const bool use_npy)
+int save_results(const std::vector<std::vector<size_t>> &neighbors,
+                 const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
 {
     if (use_npy)
     {
@@ -230,7 +230,7 @@ bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
         size_t n_rows = neighbors.size();
 
         // Flatten the 2D vectors into 1D arrays
-        std::vector<uint32_t> host_indices(n_rows * k);
+        std::vector<size_t> host_indices(n_rows * k);
         std::vector<float> host_distances(n_rows * k);
 
         for (size_t i = 0; i < n_rows; ++i)
@@ -242,16 +242,15 @@ bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
             }
         }
 
-        // Note: This requires cnpy to be included where this function is called
         cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
         cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
-        return true;
+        return 0;
     }
 
     // Optimized binary format using mmap
     size_t n_rows = neighbors.size();
-    size_t indices_size = n_rows * k * sizeof(uint32_t);
+    size_t indices_size = n_rows * k * sizeof(size_t);
     size_t distances_size = n_rows * k * sizeof(float);
 
     // Create and map indices file
@@ -267,7 +266,7 @@ bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
         throw std::runtime_error("Could not set indices file size");
     }
 
-    uint32_t *indices_ptr = static_cast<uint32_t *>(
+    size_t *indices_ptr = static_cast<size_t *>(
         mmap(nullptr, indices_size, PROT_WRITE, MAP_SHARED, indices_fd, 0));
     if (indices_ptr == MAP_FAILED)
     {
@@ -305,7 +304,7 @@ bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
     // Direct copy using memcpy (fastest possible)
     for (size_t i = 0; i < n_rows; ++i)
     {
-        memcpy(&indices_ptr[i * k], neighbors[i].data(), k * sizeof(uint32_t));
+        memcpy(&indices_ptr[i * k], neighbors[i].data(), k * sizeof(size_t));
         memcpy(&distances_ptr[i * k], distances[i].data(), k * sizeof(float));
     }
 
@@ -316,4 +315,6 @@ bool save_results(const std::vector<std::vector<uint32_t>> &neighbors,
     munmap(distances_ptr, distances_size);
     close(indices_fd);
     close(distances_fd);
+
+    return 0;
 }

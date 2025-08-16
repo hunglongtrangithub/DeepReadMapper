@@ -22,7 +22,8 @@ private:
      * @brief Internal structure to hold asynchronous inference data.
      * Used to keep inference requests and associated data alive during async operations.
      */
-    struct AsyncInferenceData {
+    struct AsyncInferenceData
+    {
         ov::InferRequest request;
         ov::Tensor input_tensor;
         std::vector<int64_t> input_data_copy;
@@ -57,11 +58,18 @@ public:
 
     /**
      * @brief Performs asynchronous inference for a batch of requests.
-     * @param batch_input_data A vector of input data vectors for each request in the batch.
-     * @param batch_input_shapes A vector of input shape vectors for each request in the batch.
+     * @param batch_inputs A vector of input data vectors for each request in the batch.
+     * @param batch_shape An input shape vectors for each request in the batch.
      * @return A vector of future objects, each holding the inference results for a single request.
      */
-    std::vector<std::future<std::vector<float>>>
-    inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_input_data,
-                    const std::vector<std::vector<size_t>> &batch_input_shapes);
+    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_inputs, const std::vector<size_t> &batch_shape);
+
+    /**
+     * @brief Performs asynchronous inference for a batch of requests using pointers.
+     * @param batch_ptrs A vector of pointers to input data for each request in the batch.
+     * @param batch_shape An input shape vectors for each request in the batch.
+     * @return A vector of future objects, each holding the inference results for a single request
+     */
+
+    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<const int64_t *> &batch_ptrs, const std::vector<size_t> &batch_shape);
 };
