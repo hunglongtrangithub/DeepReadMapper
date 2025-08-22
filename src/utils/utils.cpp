@@ -221,6 +221,7 @@ void analyze_input(const std::vector<std::string> &sequences)
               << std::endl;
 }
 
+
 int save_results(const std::vector<std::vector<size_t>> &neighbors,
                  const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
 {

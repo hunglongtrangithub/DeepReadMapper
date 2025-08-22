@@ -43,5 +43,4 @@ void analyze_input(const std::vector<std::string> &sequences);
 /// @param k Number of nearest neighbors to save.
 /// @param use_npy Whether to save results in .npy format (default: true).
 /// @return 0 if successful.
-int save_results(const std::vector<std::vector<size_t>> &neighbors,
-                  const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
+int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
