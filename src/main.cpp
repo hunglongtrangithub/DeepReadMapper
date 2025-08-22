@@ -2,7 +2,8 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "vectorize.hpp"
-#include "hnswlib_dir/search.hpp"
+// #include "hnswlib_dir/search.hpp"
+#include "hnswpq/search.hpp"
 #include <filesystem>
 
 int main(int argc, char *argv[])
@@ -87,8 +88,14 @@ int main(int argc, char *argv[])
         {
             throw std::runtime_error("Index file does not exist: " + index_file);
         }
-        hnswlib::L2Space space(dim);
-        hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, index_file);
+        //* Load Original HNSW index
+        // hnswlib::L2Space space(dim);
+        // hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, index_file);
+
+        //* Load HNSWPQ index
+        faiss::Index* loaded_index = faiss::read_index(index_file.c_str());
+        faiss::IndexHNSWPQ* alg_hnsw = dynamic_cast<faiss::IndexHNSWPQ*>(loaded_index);
+
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -118,7 +125,11 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Searching for nearest neighbors..." << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        auto [neighbors, distances] = search(alg_hnsw, embeddings);
+        //* Original HNSW search
+        // auto [neighbors, distances] = search(alg_hnsw, embeddings);
+
+        //* HNSWPQ search
+        auto [neighbors, distances] = faiss_search(alg_hnsw, embeddings, k, ef);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);

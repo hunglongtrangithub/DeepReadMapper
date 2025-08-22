@@ -1,10 +1,4 @@
-#include <faiss/IndexHNSW.h>
-#include <faiss/index_io.h>
-#include <chrono>
-#include <vector>
-#include <omp.h>
-#include "utils.hpp"
-#include "vectorize.hpp"
+#include "hnswpq/index.hpp"
 
 /*
 Create a representative training set by sampling evenly across the entire dataset.

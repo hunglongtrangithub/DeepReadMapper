@@ -33,6 +33,7 @@ include_directories(
     includes/hnswlib_dir # Original HNSW
     includes/hnswm # Minh's HNSW
     includes/gann_hnsw # GANN's HNSW
+    includes/hnswpq # Faiss HNSWPQ
     external/cereal/include
     external/cnpy
 )
@@ -68,32 +69,6 @@ target_link_libraries(pipeline
     cnpy
 )
 
-# Define source files for optimized main
-set(OPTIMIZED_MAIN_SOURCES
-    src/optimized_main.cpp
-    # For Inference
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
-    # For HNSW search
-    src/hnswlib_dir/search.cpp
-    src/hnswm/hnsw.cpp
-    src/hnswm/bruteforce.cpp
-)
-
-# Create optimized main executable
-add_executable(optimized_pipeline ${OPTIMIZED_MAIN_SOURCES})
-
-# Link libraries for optimized main
-target_link_libraries(optimized_pipeline
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    hnswlib
-    cnpy
-)
-
 # Define source files for index executable
 set(INDEX_SOURCES
     # For Inference
@@ -121,7 +96,7 @@ target_link_libraries(index
 
 # DEFINE executable for testing inference only
 set(INFERENCE_SRCS
-    src/test_inference.cpp
+    src/inference/test_inference.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -179,7 +154,7 @@ target_link_libraries(hnswm_search
 
 # DEFINE executable for testing HNSWLib search
 set(HNSWLIB_SEARCH_SRCS
-    src/test_search.cpp
+    src/hnswlib_dir/test_search.cpp
     # For Inference
     src/utils/utils.cpp
     src/utils/tok2index.cpp
@@ -285,7 +260,7 @@ target_link_libraries(hnswpq_index
 
 # DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
 set(HNSWPQ_SEARCH_SRCS
-    src/hnswpq/search.cpp
+    src/hnswpq/test_search.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
