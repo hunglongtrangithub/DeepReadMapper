@@ -12,6 +12,14 @@ Vectorizer::Vectorizer(
       preprocessor_(),
       model_(model_path)
 {
+    // Prepare data buffers for concurrent inference
+    size_t max_concurrent = Config::Inference::NUM_INFER_REQUESTS;
+    data_buffers_.resize(max_concurrent);
+
+    for (auto &buffer : data_buffers_)
+    {
+        buffer.resize(batch_size_ * max_len_);
+    }
 }
 
 /**
@@ -51,35 +59,6 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
         indicators::option::ShowRemainingTime{true}};
 
     size_t total_sequences = input.size();
-
-    /*
-    // Inference Method 1: Use existing single-batch processing
-    for (size_t row = 0; row < total_sequences; row += batch_size_)
-    {
-        size_t batch_end = std::min(row + batch_size_, total_sequences);
-        size_t current_batch_size = batch_end - row;
-
-        // Create batch input
-        std::vector<std::vector<uint16_t>> batch_input(current_batch_size);
-        for (size_t i = 0; i < current_batch_size; ++i)
-        {
-            batch_input[i] = preprocessed_inputs[row + i];
-        }
-
-        // Run inference on batch
-        std::vector<std::vector<float>> batch_output = inference(batch_input);
-
-        // Copy results to output array
-        for (size_t i = 0; i < current_batch_size; ++i)
-        {
-            output[row + i] = batch_output[i];
-        }
-
-        // Update progress bar
-        size_t current_progress_percent = (batch_end * 100) / total_sequences;
-        progressBar.set_progress(current_progress_percent);
-    }
-    */
 
     // Inference Method 2: Multi-batch processing
     const size_t concurrent_batches = Config::Inference::NUM_INFER_REQUESTS;
@@ -237,55 +216,51 @@ std::vector<std::vector<float>> Vectorizer::inference(const std::vector<std::vec
  */
 std::vector<std::vector<float>> Vectorizer::inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &batches)
 {
-    std::vector<std::vector<int64_t>> batch_inputs;
-    std::vector<std::vector<size_t>> batch_shapes;
+    std::vector<const std::vector<int64_t> *> batch_input_ptrs;
     std::vector<size_t> original_batch_sizes;
 
-    batch_inputs.reserve(batches.size());
-    batch_shapes.reserve(batches.size());
+    batch_input_ptrs.reserve(batches.size());
     original_batch_sizes.reserve(batches.size());
 
-    // Prepare all batches for concurrent inference
-    for (const auto &batch : batches)
+    // Prepare all batches using dedicated buffers
+    for (size_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx)
     {
-        // Store original batch size before padding
+        const auto &batch = batches[batch_idx];
+        auto &current_buffer = data_buffers_[batch_idx];
+
         original_batch_sizes.push_back(batch.size());
 
-        // Pad batch if needed
-        std::vector<std::vector<uint16_t>> padded_batch = batch;
-        while (padded_batch.size() < batch_size_)
-        {
-            padded_batch.push_back(std::vector<uint16_t>(max_len_, 0));
-        }
+        prepareBatch(batch, current_buffer);
 
-        // Transpose and cast
-        std::vector<std::vector<uint16_t>> transposed_batch = transpose(padded_batch);
-        std::vector<int64_t> input_data = castToInt64(transposed_batch);
+        // Pass pointer to avoid copy
+        batch_input_ptrs.push_back(&current_buffer);
+    }
 
-        batch_inputs.push_back(input_data);
-        batch_shapes.push_back({max_len_, batch_size_});
+    std::vector<const int64_t *> batch_ptrs;
+    batch_ptrs.reserve(batch_input_ptrs.size());
+    for (const auto *ptr : batch_input_ptrs)
+    {
+        batch_ptrs.push_back(ptr->data());
     }
 
     // Process all batches concurrently
-    auto futures = model_.inferBatchAsync(batch_inputs, batch_shapes);
+    auto futures = model_.inferBatchAsync(batch_ptrs, {max_len_, batch_size_});
 
-    // Collect results from all concurrent operations
+    // Collect results with optimized reshaping
     std::vector<std::vector<float>> all_results;
+    all_results.reserve(std::accumulate(original_batch_sizes.begin(), original_batch_sizes.end(), 0));
 
     for (size_t batch_idx = 0; batch_idx < futures.size(); ++batch_idx)
     {
         std::vector<float> model_output = futures[batch_idx].get();
         size_t original_size = original_batch_sizes[batch_idx];
 
-        // Reshape output into 2D batch format, only for original batch size
+        // Optimized result extraction using iterators
         for (size_t i = 0; i < original_size; ++i)
         {
-            std::vector<float> sequence_output(model_out_size_);
-            for (size_t j = 0; j < model_out_size_; ++j)
-            {
-                sequence_output[j] = model_output[i * model_out_size_ + j];
-            }
-            all_results.push_back(sequence_output);
+            all_results.emplace_back(
+                model_output.begin() + i * model_out_size_,
+                model_output.begin() + (i + 1) * model_out_size_);
         }
     }
 
@@ -340,4 +315,34 @@ std::vector<int64_t> Vectorizer::castToInt64(const std::vector<std::vector<uint1
                             { return static_cast<int64_t>(val); });
     }
     return casted_data;
+}
+
+/**
+ * @brief Optimized single-pass batch preparation using pre-allocated buffer
+ * @details Combines transpose, cast, and padding in one pass for maximum efficiency
+ * @param batch Input batch of sequences
+ * @param buffer Pre-allocated buffer to write results
+ * @return 0 on success
+ */
+int Vectorizer::prepareBatch(const std::vector<std::vector<uint16_t>> &batch, std::vector<int64_t> &buffer)
+{
+    size_t actual_batch_size = batch.size();
+
+    // Zero only the memory we'll actually use (much faster for long sequences)
+    size_t total_elements = batch_size_ * max_len_;
+    std::fill(buffer.begin(), buffer.begin() + total_elements, 0);
+
+    // Single pass: transpose, cast, and pad simultaneously
+    for (size_t seq_idx = 0; seq_idx < actual_batch_size; ++seq_idx)
+    {
+        const auto &sequence = batch[seq_idx];
+        size_t seq_len = std::min(sequence.size(), max_len_);
+
+        for (size_t pos = 0; pos < seq_len; ++pos)
+        {
+            buffer[pos * batch_size_ + seq_idx] = static_cast<int64_t>(sequence[pos]);
+        }
+    }
+
+    return 0;
 }

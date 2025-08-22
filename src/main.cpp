@@ -13,6 +13,7 @@ int main(int argc, char *argv[])
         std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [EF] [K] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
         std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
         std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
+
         std::cerr << "  - indices_output.npy: Optional indices output file (accept: indices.npy or indices.bin)" << std::endl;
         std::cerr << "  - distances_output.npy: Optional distances output file (accept: distances.npy or distances.bin)" << std::endl;
         std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
@@ -38,6 +39,10 @@ int main(int argc, char *argv[])
         const std::string distances_file = (argc >= 7) ? argv[6] : "distances.npy";
 
         const bool use_npy = (argc >= 6) ? std::string(argv[7]) == "true" : false;
+
+        // const bool use_npy = (argc >= 6) ? std::string(argv[5]) == "true" : false;
+        //TODO: Add option to use bin format
+        const bool use_npy = true; // Always use npy for now
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -67,7 +72,8 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        analyze_input(sequences);
+        // analyze_input(sequences);
+
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Finished data loading" << std::endl;
@@ -145,7 +151,7 @@ int main(int argc, char *argv[])
         std::string indices_output = indices_file;
         std::string distances_output = distances_file;
 
-        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
+        save_results(neighbors, distances, indices_output, distances_output, Config::Search::K, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);

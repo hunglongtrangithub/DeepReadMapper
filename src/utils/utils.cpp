@@ -221,8 +221,9 @@ void analyze_input(const std::vector<std::string> &sequences)
               << std::endl;
 }
 
-bool save_results(const std::vector<std::vector<size_t>> &neighbors,
-                  const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
+
+int save_results(const std::vector<std::vector<size_t>> &neighbors,
+                 const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
 {
     if (use_npy)
     {
@@ -245,7 +246,7 @@ bool save_results(const std::vector<std::vector<size_t>> &neighbors,
         cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
         cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
-        return true;
+        return 0;
     }
 
     // Optimized binary format using mmap
@@ -316,5 +317,5 @@ bool save_results(const std::vector<std::vector<size_t>> &neighbors,
     close(indices_fd);
     close(distances_fd);
 
-    return true;
+    return 0;
 }

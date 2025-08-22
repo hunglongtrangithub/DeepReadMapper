@@ -12,7 +12,7 @@ namespace Config
         // constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
         constexpr const char MODEL_PATH[] = "/home/tam/tam-workspace/Research/Optimized-DeepAligner-CPU/models/finetuned_sgn33-new-a-Apr6.xml"; // Path to the model file
         constexpr const size_t BATCH_SIZE = 100;                                                                                                // Max num of sequences/batch. Actual batch may be smaller.
-        constexpr const size_t MAX_LEN = 123;                                                                                                   // Max sequence length
+        constexpr const size_t MAX_LEN = 123;                                                                                                   // Max sequence length handled by the model. If shorter or longer, will be padded/truncated.
         constexpr const size_t MODEL_OUT_SIZE = 128;                                                                                            // Output vector size from the model
         constexpr const size_t NUM_THREADS = 128;                                                                                               // Num threads used in OpenVINO inference
         constexpr const size_t NUM_STREAMS = 128;                                                                                               // OpenVino streams (either using NUM_STREAMS or NUM_THREADS, not both)
