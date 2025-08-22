@@ -7,9 +7,11 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3 || argc > 6)
+    if (argc < 3 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [EF] [K] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
+        std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
+        std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
         std::cerr << "  - indices_output.npy: Optional indices output file (accept: indices.npy or indices.bin)" << std::endl;
         std::cerr << "  - distances_output.npy: Optional distances output file (accept: distances.npy or distances.bin)" << std::endl;
         std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
@@ -26,11 +28,15 @@ int main(int argc, char *argv[])
         const std::string index_file = argv[1];
         const std::string sequences_file = argv[2];
 
-        // Optional output file names with defaults
-        const std::string indices_file = (argc >= 4) ? argv[3] : "indices.npy";
-        const std::string distances_file = (argc >= 5) ? argv[4] : "distances.npy";
+        // Optional HNSW search parameters
+        int ef = (argc >= 4) ? std::stoi(argv[3]) : Config::Search::EF;
+        int k = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::K;
 
-        const bool use_npy = (argc >= 6) ? std::string(argv[5]) == "true" : false;
+        // Optional output file names with defaults
+        const std::string indices_file = (argc >= 6) ? argv[5] : "indices.npy";
+        const std::string distances_file = (argc >= 7) ? argv[6] : "distances.npy";
+
+        const bool use_npy = (argc >= 6) ? std::string(argv[7]) == "true" : false;
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -69,7 +75,6 @@ int main(int argc, char *argv[])
 
         // Load search index
         const int dim = Config::Build::DIM;
-        const int ef = Config::Search::EF;
 
         std::cout << "[MAIN] HNSW INDEX LOADING STEP" << std::endl;
         std::cout << "[MAIN] Search Index Config:" << std::endl;
@@ -129,7 +134,7 @@ int main(int argc, char *argv[])
         std::string indices_output = indices_file;
         std::string distances_output = distances_file;
 
-        save_results(neighbors, distances, indices_output, distances_output, Config::Search::K, use_npy);
+        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
