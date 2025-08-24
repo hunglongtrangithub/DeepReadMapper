@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 3 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <search.index> <query_seq.txt> [EF] [K] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <search.index> <sequences.fastq> [EF] [K] [indices_output.npy] [distances_output.npy] [use_npy]" << std::endl;
         std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
         std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
 
@@ -39,10 +39,7 @@ int main(int argc, char *argv[])
         const std::string distances_file = (argc >= 7) ? argv[6] : "distances.npy";
 
         const bool use_npy = (argc >= 6) ? std::string(argv[7]) == "true" : false;
-
-        // const bool use_npy = (argc >= 6) ? std::string(argv[5]) == "true" : false;
-        //TODO: Add option to use bin format
-        const bool use_npy = true; // Always use npy for now
+        // const bool use_npy = true; // Always use npy for now
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -99,9 +96,8 @@ int main(int argc, char *argv[])
         // hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, index_file);
 
         //* Load HNSWPQ index
-        faiss::Index* loaded_index = faiss::read_index(index_file.c_str());
-        faiss::IndexHNSWPQ* alg_hnsw = dynamic_cast<faiss::IndexHNSWPQ*>(loaded_index);
-
+        faiss::Index *loaded_index = faiss::read_index(index_file.c_str());
+        faiss::IndexHNSWPQ *alg_hnsw = dynamic_cast<faiss::IndexHNSWPQ *>(loaded_index);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);

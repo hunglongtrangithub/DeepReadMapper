@@ -1,7 +1,11 @@
 #include "utils.hpp"
+#include "parse_inputs.hpp"
 #include "progressbar.h"
 
-std::vector<std::string> read_file_default(const std::string &file_path)
+/// @brief Read input sequences from a plain text file (one sequence per line).
+/// @param file_path Path to the input file.
+/// @return Vector of input sequences as strings.
+std::vector<std::string> read_txt_default(const std::string &file_path)
 {
     std::cout << "Reading sequences from: " << file_path << std::endl;
 
@@ -84,7 +88,10 @@ std::vector<std::string> read_file_default(const std::string &file_path)
     return sequences;
 }
 
-std::vector<std::string> read_file_mmap(const std::string &file_path)
+/// @brief Read input sequences using memory mapping (Linux only).
+/// @param file_path Path to the input file.
+/// @return Vector of input sequences as strings.
+std::vector<std::string> read_txt_mmap(const std::string &file_path)
 {
     std::cout << "Reading sequences from: " << file_path << " (using mmap)" << std::endl;
 
@@ -173,21 +180,45 @@ std::vector<std::string> read_file_mmap(const std::string &file_path)
     return sequences;
 }
 
+/// @brief Wrapper function for reading input sequences efficiently.
+/// @param file_path
+/// @return Vector of input sequences as strings
 std::vector<std::string> read_file(const std::string &file_path)
 {
-/* Wrapper function for efficient file reading */
+    // Check file extension
+    std::string file_ext = std::filesystem::path(file_path).extension().string();
+    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fastq" && file_ext != ".txt")
+    {
+        throw std::runtime_error("Unsupported file format: " + file_ext + ". Only .fna/.fastq/.txt are supported.");
+    }
+
+    // Handle fna & fastq without mmap for now
+    // TODO: Implement mmap-based parsing for FASTA/FASTQ files
+    if (file_ext == ".fna" || file_ext == ".fasta")
+    {
+        std::cout << "Detected FASTA file format." << std::endl;
+        return preprocess_fasta(file_path);
+    }
+    else if (file_ext == ".fastq")
+    {
+        std::cout << "Detected FASTQ file format." << std::endl;
+        return preprocess_fastq(file_path);
+    }
+
+    std::cout << "Detected plain text file format." << std::endl;
+
+// For .txt or other plain text files, use mmap if available
 #ifdef __linux__
-    return read_file_mmap(file_path); // Use memory mapping on Linux
+    return read_txt_mmap(file_path); // Use memory mapping on Linux
 #else
-    return read_file_default(file_path);
+    return read_txt_default(file_path);
 #endif
 }
 
+/// @brief Analyze input sequences and print statistics.
+/// @param sequences Vector of input sequences as strings.
 void analyze_input(const std::vector<std::string> &sequences)
 {
-    /*
-    Calculate basic statistics on input sequences
-    */
     if (sequences.empty())
         return;
 
@@ -221,9 +252,17 @@ void analyze_input(const std::vector<std::string> &sequences)
               << std::endl;
 }
 
+/// @brief Save search results to files.
+/// @param neighbors Vector of vectors containing neighbor indices.
+/// @param distances Vector of vectors containing L2 distances from query to neighbors.
+/// @param indices_file Output filename for neighbor indices.
+/// @param distances_file Output filename for distances.
+/// @param k Number of nearest neighbors to save.
+/// @param use_npy Whether to save results in .npy format (default: true).
+/// @return 0 if successful.
+// Replace the save_results function with this simplified version:
 
-int save_results(const std::vector<std::vector<size_t>> &neighbors,
-                 const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
+int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
 {
     if (use_npy)
     {
@@ -249,73 +288,34 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors,
         return 0;
     }
 
-    // Optimized binary format using mmap
+    // Save results in binary format
     size_t n_rows = neighbors.size();
-    size_t indices_size = n_rows * k * sizeof(size_t);
-    size_t distances_size = n_rows * k * sizeof(float);
 
-    // Create and map indices file
-    int indices_fd = open(indices_file.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-    if (indices_fd == -1)
+    // Write indices file
+    std::ofstream indices_out(indices_file, std::ios::binary);
+    if (!indices_out)
     {
         throw std::runtime_error("Could not create indices file: " + indices_file);
     }
 
-    if (ftruncate(indices_fd, indices_size) == -1)
+    for (size_t i = 0; i < n_rows; ++i)
     {
-        close(indices_fd);
-        throw std::runtime_error("Could not set indices file size");
+        indices_out.write(reinterpret_cast<const char *>(neighbors[i].data()), k * sizeof(size_t));
     }
+    indices_out.close();
 
-    size_t *indices_ptr = static_cast<size_t *>(
-        mmap(nullptr, indices_size, PROT_WRITE, MAP_SHARED, indices_fd, 0));
-    if (indices_ptr == MAP_FAILED)
+    // Write distances file
+    std::ofstream distances_out(distances_file, std::ios::binary);
+    if (!distances_out)
     {
-        close(indices_fd);
-        throw std::runtime_error("Could not mmap indices file");
-    }
-
-    // Create and map distances file
-    int distances_fd = open(distances_file.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-    if (distances_fd == -1)
-    {
-        munmap(indices_ptr, indices_size);
-        close(indices_fd);
         throw std::runtime_error("Could not create distances file: " + distances_file);
     }
 
-    if (ftruncate(distances_fd, distances_size) == -1)
-    {
-        munmap(indices_ptr, indices_size);
-        close(indices_fd);
-        close(distances_fd);
-        throw std::runtime_error("Could not set distances file size");
-    }
-
-    float *distances_ptr = static_cast<float *>(
-        mmap(nullptr, distances_size, PROT_WRITE, MAP_SHARED, distances_fd, 0));
-    if (distances_ptr == MAP_FAILED)
-    {
-        munmap(indices_ptr, indices_size);
-        close(indices_fd);
-        close(distances_fd);
-        throw std::runtime_error("Could not mmap distances file");
-    }
-
-    // Direct copy using memcpy (fastest possible)
     for (size_t i = 0; i < n_rows; ++i)
     {
-        memcpy(&indices_ptr[i * k], neighbors[i].data(), k * sizeof(size_t));
-        memcpy(&distances_ptr[i * k], distances[i].data(), k * sizeof(float));
+        distances_out.write(reinterpret_cast<const char *>(distances[i].data()), k * sizeof(float));
     }
-
-    // Ensure data is written to disk and cleanup
-    msync(indices_ptr, indices_size, MS_SYNC);
-    msync(distances_ptr, distances_size, MS_SYNC);
-    munmap(indices_ptr, indices_size);
-    munmap(distances_ptr, distances_size);
-    close(indices_fd);
-    close(distances_fd);
+    distances_out.close();
 
     return 0;
 }
