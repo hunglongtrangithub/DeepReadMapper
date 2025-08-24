@@ -45,3 +45,13 @@ void analyze_input(const std::vector<std::string> &sequences);
 /// @param use_npy Whether to save results in .npy format (default: true).
 /// @return 0 if successful.
 int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
+
+/// @brief Overload of save_results to handle faiss::idx_t type for neighbors. ALl params are the same as above.
+/// @param neighbors
+/// @param distances
+/// @param indices_file
+/// @param distances_file
+/// @param k
+/// @param use_npy
+/// @return
+int save_results(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);

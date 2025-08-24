@@ -319,3 +319,16 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
 
     return 0;
 }
+
+int save_results(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
+{
+    // Convert long int to size_t
+    std::vector<std::vector<size_t>> neighbors_size_t(neighbors.size());
+    for (size_t i = 0; i < neighbors.size(); ++i)
+    {
+        neighbors_size_t[i].assign(neighbors[i].begin(), neighbors[i].end());
+    }
+
+    // Call the existing function
+    return save_results(neighbors_size_t, distances, indices_file, distances_file, k, use_npy);
+}

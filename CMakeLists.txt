@@ -24,6 +24,29 @@ find_package(OpenMP REQUIRED)
 add_subdirectory(external/hnswlib)
 add_subdirectory(external/cnpy)
 
+# Locate FAISS for HNSW-PQ
+# Find FAISS in conda
+find_path(FAISS_INCLUDE_DIR
+    NAMES faiss/IndexHNSW.h faiss/Index.h
+    PATHS $ENV{CONDA_PREFIX}/include
+    NO_DEFAULT_PATH
+)
+
+find_library(FAISS_LIBRARY
+    NAMES faiss
+    PATHS $ENV{CONDA_PREFIX}/lib
+    NO_DEFAULT_PATH
+)
+
+if(NOT FAISS_INCLUDE_DIR OR NOT FAISS_LIBRARY)
+    message(FATAL_ERROR "FAISS not found in conda! Please run: conda install faiss-cpu")
+endif()
+
+# Print FAISS info
+message(STATUS "FAISS include: ${FAISS_INCLUDE_DIR}")
+message(STATUS "FAISS library: ${FAISS_LIBRARY}")
+
+
 # Include directories
 include_directories(
     /usr/local/include
@@ -44,6 +67,7 @@ set(PIPELINE_SOURCES
     src/main.cpp
 
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -52,14 +76,17 @@ set(PIPELINE_SOURCES
 
     # For HNSW search
     src/hnswlib_dir/search.cpp
-    src/hnswm/hnsw.cpp
-    src/hnswm/bruteforce.cpp
-    src/gann_hnsw/gann_hnsw.cpp
+    # src/hnswm/hnsw.cpp
+    # src/hnswm/bruteforce.cpp
+    # src/gann_hnsw/gann_hnsw.cpp
+    src/hnswpq/search.cpp
 )
+
 
 # Create pipeline executable (for inference + HNSW search)
 add_executable(pipeline ${PIPELINE_SOURCES})
 
+target_include_directories(pipeline PRIVATE ${FAISS_INCLUDE_DIR})
 
 # Link libraries for pipeline
 target_link_libraries(pipeline
@@ -67,11 +94,13 @@ target_link_libraries(pipeline
     OpenMP::OpenMP_CXX
     hnswlib
     cnpy
+    ${FAISS_LIBRARY}
 )
 
 # Define source files for index executable
 set(INDEX_SOURCES
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -96,9 +125,10 @@ target_link_libraries(index
 
 # DEFINE executable for testing inference only
 set(INFERENCE_SRCS
-    src/inference/test_inference.cpp
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
+    src/inference/test_inference.cpp
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
@@ -112,6 +142,7 @@ target_link_libraries(inference
 # DEFINE executable for testing HNSW from Minh's code
 set(HNSWM_BUILD_SRCS
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -133,6 +164,7 @@ target_link_libraries(hnswm_build
 
 set(HNSWM_SEARCH_SRCS
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -156,6 +188,7 @@ target_link_libraries(hnswm_search
 set(HNSWLIB_SEARCH_SRCS
     src/hnswlib_dir/test_search.cpp
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -178,6 +211,7 @@ target_link_libraries(hnswlib_search
 set(GANN_INDEX_SRCS
     src/gann_hnsw/test_gann_build.cpp
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -200,6 +234,7 @@ target_link_libraries(gann_index
 set(GANN_SEARCH_SRCS
     src/gann_hnsw/test_gann_search.cpp
     # For Inference
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
     src/inference/vectorize.cpp
@@ -217,33 +252,14 @@ target_link_libraries(gann_search
     cnpy
 )
 
-# Locate FAISS for HNSW-PQ
-# Find FAISS in conda
-find_path(FAISS_INCLUDE_DIR
-    NAMES faiss/IndexHNSW.h faiss/Index.h
-    PATHS $ENV{CONDA_PREFIX}/include
-    NO_DEFAULT_PATH
-)
-
-find_library(FAISS_LIBRARY
-    NAMES faiss
-    PATHS $ENV{CONDA_PREFIX}/lib
-    NO_DEFAULT_PATH
-)
-
-if(NOT FAISS_INCLUDE_DIR OR NOT FAISS_LIBRARY)
-    message(FATAL_ERROR "FAISS not found in conda! Please run: conda install faiss-cpu")
-endif()
-
-# Print FAISS info
-message(STATUS "FAISS include: ${FAISS_INCLUDE_DIR}")
-message(STATUS "FAISS library: ${FAISS_LIBRARY}")
-
 # DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
 set(HNSWPQ_INDEX_SRCS
-    src/hnswpq/index.cpp
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
+
+    src/hnswpq/index.cpp
+
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
@@ -260,12 +276,16 @@ target_link_libraries(hnswpq_index
 
 # DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
 set(HNSWPQ_SEARCH_SRCS
-    src/hnswpq/test_search.cpp
+    src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
+    src/hnswpq/test_search.cpp
+
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
+
+    src/hnswpq/search.cpp
 )
 
 add_executable(hnswpq_search ${HNSWPQ_SEARCH_SRCS})

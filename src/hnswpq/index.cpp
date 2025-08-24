@@ -33,9 +33,7 @@ std::vector<float> create_training_set(
     return train_data;
 }
 
-void build_faiss_index(const std::vector<std::vector<float>> &input_data,
-                       const std::string &index_file,
-                       int M_pq = 8, int nbits = 8, int M_hnsw = 16, int EFC = 200)
+void build_faiss_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M_pq, int nbits, int M_hnsw, int EFC)
 {
     // Build parameters
     int dim = input_data[0].size();
