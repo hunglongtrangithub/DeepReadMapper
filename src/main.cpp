@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
         std::string indices_output = indices_file;
         std::string distances_output = distances_file;
 
-        save_results(neighbors, distances, indices_output, distances_output, Config::Search::K, use_npy);
+        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);

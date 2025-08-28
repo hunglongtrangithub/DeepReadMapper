@@ -126,9 +126,9 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3 || argc > 7)
+    if (argc < 4 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index> [M_pq] [nbits] [M_hnsw] [EFC]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index> <ref_len> [M_pq] [nbits] [M_hnsw] [EFC]" << std::endl;
         std::cerr << "  M_pq: number of PQ subquantizers (default: 8)" << std::endl;
         std::cerr << "  nbits: bits per subquantizer (default: 8)" << std::endl;
         std::cerr << "  M_hnsw: HNSW connectivity (default: 16)" << std::endl;
@@ -138,14 +138,15 @@ int main(int argc, char *argv[])
 
     std::string ref_file = argv[1];
     std::string index_file = argv[2];
+    int ref_len = std::stoi(argv[3]);
 
     // Parse optional parameters with defaults
     // M_pq must be divisor of DIM, lower -> better accuracy
     // nbits must be 8, 10, or 12. Higher -> better accuracy
-    int M_pq = (argc >= 4) ? std::stoi(argv[3]) : 8;
-    int nbits = (argc >= 5) ? std::stoi(argv[4]) : 8;
-    int M_hnsw = (argc >= 6) ? std::stoi(argv[5]) : 16;
-    int EFC = (argc >= 7) ? std::stoi(argv[6]) : 200;
+    int M_pq = (argc >= 5) ? std::stoi(argv[4]) : 8;
+    int nbits = (argc >= 6) ? std::stoi(argv[5]) : 8;
+    int M_hnsw = (argc >= 7) ? std::stoi(argv[6]) : 16;
+    int EFC = (argc >= 8) ? std::stoi(argv[7]) : 200;
 
     // Config inference parameters
     const std::string model_path = Config::Inference::MODEL_PATH;
@@ -155,7 +156,7 @@ int main(int argc, char *argv[])
 
     // Load input data
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    std::vector<std::string> sequences = read_file(ref_file);
+    std::vector<std::string> sequences = read_file(ref_file, ref_len);
 
     if (sequences.empty())
     {

@@ -44,3 +44,5 @@ build/
 debug/
 logs/
 CMakeCache.txt
+
+.vscode/

@@ -1,4 +1,5 @@
 #include "parse_inputs.hpp"
+#include "progressbar.h"
 
 static const std::array<char, 128> comp_table = []
 {
@@ -50,30 +51,166 @@ std::string reverse_complement(const std::string &seq)
     return rc;
 }
 
-// FASTA preprocessing
-std::vector<std::string> preprocess_fasta(const std::string &fasta_file)
+// FASTA file reading using traditional file I/O
+std::pair<const char*, size_t> read_fasta_default(const std::string &fasta_file, std::unique_ptr<char[]> &buffer)
 {
-    std::ifstream infile(fasta_file);
+    std::cout << "Reading FASTA file: " << fasta_file << std::endl;
+
+    std::ifstream infile(fasta_file, std::ios::binary);
     if (!infile)
     {
         throw std::runtime_error("Failed to open FASTA file: " + fasta_file);
     }
 
-    // Skip the first line (FASTA header)
-    std::string header;
-    std::getline(infile, header);
+    // Get file size
+    struct stat file_stat;
+    if (stat(fasta_file.c_str(), &file_stat) != 0)
+    {
+        throw std::runtime_error("Could not stat file: " + fasta_file);
+    }
+    size_t file_size = file_stat.st_size;
+
+    // Setup progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"reading FASTA file"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    // Allocate buffer and read entire file
+    buffer = std::make_unique<char[]>(file_size + 1);
+    
+    // Read in chunks to show progress
+    const size_t chunk_size = 1024 * 1024; // 1MB chunks
+    size_t bytes_read = 0;
+    size_t last_progress_update = 0;
+    
+    progressBar.set_progress(0);
+    
+    while (bytes_read < file_size) {
+        size_t to_read = std::min(chunk_size, file_size - bytes_read);
+        infile.read(buffer.get() + bytes_read, to_read);
+        bytes_read += to_read;
+        
+        // Update progress bar
+        if (bytes_read - last_progress_update > chunk_size) {
+            progressBar.set_progress((bytes_read * 100) / file_size);
+            last_progress_update = bytes_read;
+        }
+    }
+    
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+    
+    buffer[file_size] = '\0';
+    infile.close();
+
+    std::cout << "File read complete: " << file_size << " bytes" << std::endl;
+    return {buffer.get(), file_size};
+}
+
+// FASTA file reading using memory mapping (Linux only)
+std::pair<const char*, size_t> read_fasta_mmap(const std::string &fasta_file, int &fd)
+{
+    std::cout << "Reading FASTA file: " << fasta_file << " (using mmap)" << std::endl;
+
+    // Open file
+    fd = open(fasta_file.c_str(), O_RDONLY);
+    if (fd == -1)
+    {
+        throw std::runtime_error("Failed to open FASTA file: " + fasta_file);
+    }
+
+    // Get file size
+    struct stat sb;
+    if (fstat(fd, &sb) == -1)
+    {
+        close(fd);
+        throw std::runtime_error("Failed to get file size: " + fasta_file);
+    }
+
+    // Setup progress bar for mapping
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"mapping FASTA file (mmap)"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    progressBar.set_progress(0);
+
+    // Memory map the file
+    const char *data = static_cast<const char *>(
+        mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+
+    if (data == MAP_FAILED)
+    {
+        close(fd);
+        indicators::show_console_cursor(true);
+        throw std::runtime_error("Failed to mmap file: " + fasta_file);
+    }
+
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "File mapped complete: " << sb.st_size << " bytes" << std::endl;
+    return {data, static_cast<size_t>(sb.st_size)};
+}
+
+// Wrapper function for FASTA file reading
+std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::unique_ptr<char[]> &buffer, int &fd)
+{
+#ifdef __linux__
+    return read_fasta_mmap(fasta_file, fd);
+#else
+    return read_fasta_default(fasta_file, buffer);
+#endif
+}
+
+// Single-threaded FASTA data processing
+std::vector<std::string> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, int ref_len)
+{
+    std::cout << "Processing FASTA data..." << std::endl;
+
+    // Find end of first line (header)
+    const char *seq_start = data;
+    while (seq_start < data + data_size && *seq_start != '\n')
+    {
+        seq_start++;
+    }
+    if (seq_start < data + data_size)
+        seq_start++; // Skip newline
 
     // Preallocate vector
-    size_t estimated_size = estimate_token_count(fasta_file, REFERENCE_SEQ_LEN);
+    size_t estimated_size = estimate_token_count(fasta_file, ref_len);
     std::vector<std::string> result;
     result.reserve(estimated_size);
 
-    std::string buffer;
-    buffer.reserve(REFERENCE_SEQ_LEN);
+    std::cout << "Estimated number of sequences: " << estimated_size << std::endl;
+    std::cout << "Estimated RAM usage: " << (estimated_size * 176) / (1024 * 1024 * 1024) << " GB" << std::endl
+              << std::endl;
 
-    char c;
-    while (infile.get(c))
+    std::string buffer;
+    buffer.reserve(ref_len);
+
+    // Setup progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"processing FASTA sequences"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    size_t bytes_processed = 0;
+    size_t last_progress_update = 0;
+
+    // Process the data
+    for (const char *ptr = seq_start; ptr < data + data_size; ++ptr)
     {
+        char c = *ptr;
+        bytes_processed++;
+
         if (std::isspace(c))
             continue;
 
@@ -83,51 +220,226 @@ std::vector<std::string> preprocess_fasta(const std::string &fasta_file)
 
         buffer += c;
 
-        if (buffer.size() >= REFERENCE_SEQ_LEN)
+        if (buffer.size() >= ref_len)
         {
-            std::string window = buffer.substr(0, REFERENCE_SEQ_LEN);
+            std::string window = buffer.substr(0, ref_len);
 
             std::string forward;
-            forward.reserve(2 + REFERENCE_SEQ_LEN);
+            forward.reserve(2 + ref_len);
             forward.append(PREFIX).append(window).append(POSTFIX);
             result.push_back(forward);
 
             std::string rev = reverse_complement(window);
             std::string reverse;
-            reverse.reserve(2 + REFERENCE_SEQ_LEN);
+            reverse.reserve(2 + ref_len);
             reverse.append(PREFIX).append(rev).append(POSTFIX);
             result.push_back(reverse);
 
             // Slide window by 1
             buffer.erase(0, 1);
         }
+
+        // Update progress bar
+        if (bytes_processed - last_progress_update > 1024 * 1024)
+        {
+            progressBar.set_progress((bytes_processed * 100) / data_size);
+            last_progress_update = bytes_processed;
+        }
     }
 
-    infile.close();
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "Successfully processed " << result.size() << " sequences" << std::endl;
     return result;
 }
 
-std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
+// Combined wrapper function that handles both I/O and processing
+std::vector<std::string> preprocess_fasta(const std::string &fasta_file, int ref_len)
 {
+    std::unique_ptr<char[]> buffer;
+    int fd = -1;
+
+    // Step 1: Read file
+    auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
+
+    // Step 2: Process data
+    auto result = format_fasta(data, data_size, fasta_file, ref_len);
+
+    // Step 3: Cleanup
+#ifdef __linux__
+    if (fd != -1)
+    {
+        munmap(const_cast<char *>(data), data_size);
+        close(fd);
+    }
+#endif
+
+    return result;
+}
+
+// FASTQ preprocessing using traditional file I/O
+std::vector<std::string> preprocess_fastq_default(const std::string &fastq_file)
+{
+    std::cout << "Processing FASTQ file: " << fastq_file << std::endl;
+
     std::ifstream infile(fastq_file);
     if (!infile.is_open())
     {
         throw std::runtime_error("Failed to open file: " + fastq_file);
     }
 
+    // Get file size for progress tracking
+    struct stat file_stat;
+    if (stat(fastq_file.c_str(), &file_stat) != 0)
+    {
+        throw std::runtime_error("Could not stat file: " + fastq_file);
+    }
+    size_t file_size = file_stat.st_size;
+
+    // Estimate number of sequences (rough estimate: file_size / 200 for FASTQ)
     std::vector<std::string> sequences;
+    sequences.reserve(file_size / 200 + 1000);
+
+    // Setup progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"processing FASTQ sequences"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
     std::string line;
     int line_number = 0;
+    size_t bytes_processed = 0;
+    size_t last_progress_update = 0;
 
     while (std::getline(infile, line))
     {
+        bytes_processed += line.size() + 1; // +1 for newline
+
         if (line_number % 4 == 1)
         { // Sequence line (2nd line in every 4-line block)
             sequences.emplace_back(PREFIX + line + POSTFIX);
         }
         ++line_number;
+
+        // Update progress bar
+        if (bytes_processed - last_progress_update > 1024 * 1024)
+        {
+            size_t progress_percent = (bytes_processed * 100) / file_size;
+            progressBar.set_progress(progress_percent);
+            last_progress_update = bytes_processed;
+        }
     }
 
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
     infile.close();
+    std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
     return sequences;
+}
+
+// FASTQ preprocessing using memory mapping (Linux only)
+std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
+{
+    std::cout << "Processing FASTQ file: " << fastq_file << " (using mmap)" << std::endl;
+
+    // Open file
+    int fd = open(fastq_file.c_str(), O_RDONLY);
+    if (fd == -1)
+    {
+        throw std::runtime_error("Failed to open FASTQ file: " + fastq_file);
+    }
+
+    // Get file size
+    struct stat sb;
+    if (fstat(fd, &sb) == -1)
+    {
+        close(fd);
+        throw std::runtime_error("Failed to get file size: " + fastq_file);
+    }
+
+    // Memory map the file
+    const char *data = static_cast<const char *>(
+        mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+
+    if (data == MAP_FAILED)
+    {
+        close(fd);
+        throw std::runtime_error("Failed to mmap file: " + fastq_file);
+    }
+
+    // Estimate number of sequences
+    std::vector<std::string> sequences;
+    sequences.reserve(sb.st_size / 200 + 1000);
+
+    // Setup progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"processing FASTQ sequences (mmap)"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    const char *current = data;
+    const char *end = data + sb.st_size;
+    int line_number = 0;
+    size_t bytes_processed = 0;
+    size_t last_progress_update = 0;
+
+    while (current < end)
+    {
+        const char *line_start = current;
+
+        // Find end of line
+        while (current < end && *current != '\n' && *current != '\r')
+        {
+            current++;
+        }
+
+        // Process sequence line (2nd line in every 4-line block)
+        if (line_number % 4 == 1 && current > line_start)
+        {
+            std::string line(line_start, current - line_start);
+            sequences.emplace_back(PREFIX + line + POSTFIX);
+        }
+
+        // Skip line endings
+        while (current < end && (*current == '\n' || *current == '\r'))
+        {
+            current++;
+        }
+
+        line_number++;
+
+        // Update progress bar
+        bytes_processed = current - data;
+        if (bytes_processed - last_progress_update > 1024 * 1024)
+        {
+            progressBar.set_progress((bytes_processed * 100) / sb.st_size);
+            last_progress_update = bytes_processed;
+        }
+    }
+
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    // Cleanup
+    munmap(const_cast<char *>(data), sb.st_size);
+    close(fd);
+
+    std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
+    return sequences;
+}
+
+// Wrapper function for FASTQ preprocessing
+std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
+{
+#ifdef __linux__
+    return preprocess_fastq_mmap(fastq_file);
+#else
+    return preprocess_fastq_default(fastq_file);
+#endif
 }

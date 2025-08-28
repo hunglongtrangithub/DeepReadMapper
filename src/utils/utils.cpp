@@ -181,23 +181,22 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
 }
 
 /// @brief Wrapper function for reading input sequences efficiently.
-/// @param file_path
+/// @param file_path Path to the input file (FASTA, FASTQ, or plain text).
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @return Vector of input sequences as strings
-std::vector<std::string> read_file(const std::string &file_path)
+std::vector<std::string> read_file(const std::string &file_path, int ref_len)
 {
     // Check file extension
     std::string file_ext = std::filesystem::path(file_path).extension().string();
-    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fastq" && file_ext != ".txt")
+    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa" && file_ext != ".fastq" && file_ext != ".txt")
     {
         throw std::runtime_error("Unsupported file format: " + file_ext + ". Only .fna/.fastq/.txt are supported.");
     }
 
-    // Handle fna & fastq without mmap for now
-    // TODO: Implement mmap-based parsing for FASTA/FASTQ files
-    if (file_ext == ".fna" || file_ext == ".fasta")
+    if (file_ext == ".fna" || file_ext == ".fasta" || file_ext == ".fa")
     {
         std::cout << "Detected FASTA file format." << std::endl;
-        return preprocess_fasta(file_path);
+        return preprocess_fasta(file_path, ref_len);
     }
     else if (file_ext == ".fastq")
     {

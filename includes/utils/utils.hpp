@@ -29,8 +29,9 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path);
 // Add this to your header:
 /// @brief Wrapper function for reading input sequences efficiently.
 /// @param file_path Path to the input file
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @return Vector of input sequences as strings
-std::vector<std::string> read_file(const std::string &file_path);
+std::vector<std::string> read_file(const std::string &file_path, int ref_len = 150);
 
 /// @brief Analyze input sequences and print statistics.
 /// @param sequences Vector of input sequences as strings.
