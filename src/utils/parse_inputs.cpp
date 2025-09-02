@@ -12,7 +12,7 @@ static const std::array<char, 128> comp_table = []
     return table;
 }();
 
-size_t estimate_token_count(const std::string &fasta_path, int token_len)
+size_t estimate_token_count(const std::string &fasta_path, int token_len, size_t stride)
 {
     // Get file size from the OS
     std::uintmax_t file_size = std::filesystem::file_size(fasta_path);
@@ -31,8 +31,8 @@ size_t estimate_token_count(const std::string &fasta_path, int token_len)
         return 0;
     }
 
-    // Sliding window of stride 1: generates (L - k + 1) tokens
-    size_t num_windows = estimated_bases - token_len + 1;
+    // Sliding window of stride s: generates (L - k + 1) tokens
+    size_t num_windows = static_cast<size_t>((estimated_bases - token_len) / stride) + 1;
 
     // Each window yields both forward and reverse complement
     return num_windows * 2;
@@ -169,7 +169,9 @@ std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::u
 }
 
 // Single-threaded FASTA data processing
-std::vector<std::string> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, int ref_len)
+std::vector<std::string> format_fasta(const char *data, size_t data_size,
+                                      const std::string &fasta_file,
+                                      size_t ref_len, size_t stride)
 {
     std::cout << "Processing FASTA data..." << std::endl;
 
@@ -183,7 +185,7 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size, const 
         seq_start++; // Skip newline
 
     // Preallocate vector
-    size_t estimated_size = estimate_token_count(fasta_file, ref_len);
+    size_t estimated_size = estimate_token_count(fasta_file, ref_len, stride);
     std::vector<std::string> result;
     result.reserve(estimated_size);
 
@@ -192,7 +194,8 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size, const 
               << std::endl;
 
     std::string buffer;
-    buffer.reserve(ref_len);
+    buffer.reserve(ref_len + std::max<int>(1024, stride));
+    size_t buf_start = 0;
 
     // Setup progress bar
     indicators::show_console_cursor(false);
@@ -218,11 +221,11 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size, const 
         if (c != 'A' && c != 'T' && c != 'C' && c != 'G' && c != 'N')
             continue;
 
-        buffer += c;
+        buffer.push_back(c);
 
-        if (buffer.size() >= ref_len)
-        {
-            std::string window = buffer.substr(0, ref_len);
+        // Process as many windows as we can given current buffer contents
+        while (buffer.size() - buf_start >= ref_len) {
+            std::string window = buffer.substr(buf_start, ref_len);
 
             std::string forward;
             forward.reserve(2 + ref_len);
@@ -235,8 +238,15 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size, const 
             reverse.append(PREFIX).append(rev).append(POSTFIX);
             result.push_back(reverse);
 
-            // Slide window by 1
-            buffer.erase(0, 1);
+            buf_start += stride;
+        }
+
+        // Periodically compact the buffer to avoid unbounded growth / big memory
+        // Update buffer with new content when ref_len is done, or when half buffered data is obsoleted 
+        size_t min_compact = std::max<size_t>(ref_len, 4096);
+        if (buf_start >= min_compact || buf_start >= buffer.size() / 2) {
+            buffer.erase(0, buf_start);
+            buf_start = 0;
         }
 
         // Update progress bar
@@ -255,7 +265,7 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size, const 
 }
 
 // Combined wrapper function that handles both I/O and processing
-std::vector<std::string> preprocess_fasta(const std::string &fasta_file, int ref_len)
+std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride)
 {
     std::unique_ptr<char[]> buffer;
     int fd = -1;
@@ -264,7 +274,7 @@ std::vector<std::string> preprocess_fasta(const std::string &fasta_file, int ref
     auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
 
     // Step 2: Process data
-    auto result = format_fasta(data, data_size, fasta_file, ref_len);
+    auto result = format_fasta(data, data_size, fasta_file, ref_len, stride);
 
     // Step 3: Cleanup
 #ifdef __linux__

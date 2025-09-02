@@ -183,8 +183,9 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
 /// @brief Wrapper function for reading input sequences efficiently.
 /// @param file_path Path to the input file (FASTA, FASTQ, or plain text).
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
+/// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
 /// @return Vector of input sequences as strings
-std::vector<std::string> read_file(const std::string &file_path, int ref_len)
+std::vector<std::string> read_file(const std::string &file_path, size_t ref_len, size_t stride)
 {
     // Check file extension
     std::string file_ext = std::filesystem::path(file_path).extension().string();
@@ -196,7 +197,7 @@ std::vector<std::string> read_file(const std::string &file_path, int ref_len)
     if (file_ext == ".fna" || file_ext == ".fasta" || file_ext == ".fa")
     {
         std::cout << "Detected FASTA file format." << std::endl;
-        return preprocess_fasta(file_path, ref_len);
+        return preprocess_fasta(file_path, ref_len, stride);
     }
     else if (file_ext == ".fastq")
     {
@@ -330,4 +331,98 @@ int save_results(const std::vector<std::vector<long int>> &neighbors, const std:
 
     // Call the existing function
     return save_results(neighbors_size_t, distances, indices_file, distances_file, k, use_npy);
+}
+
+int save_config(const std::unordered_map<std::string, ConfigValue> &config, const std::string &folder_path, const std::string &config_file)
+{
+    std::filesystem::create_directories(folder_path);
+
+    std::string config_path = folder_path + "/" + config_file;
+
+    std::ofstream out(config_file);
+    if (!out)
+    {
+        throw std::runtime_error("Could not create config file: " + config_file);
+    }
+
+    for (const auto &pair : config)
+    {
+        out << pair.first << ": ";
+        if (std::holds_alternative<size_t>(pair.second))
+        {
+            out << std::get<size_t>(pair.second);
+        }
+        else if (std::holds_alternative<float>(pair.second))
+        {
+            out << std::get<float>(pair.second);
+        }
+        else if (std::holds_alternative<std::string>(pair.second))
+        {
+            out << std::get<std::string>(pair.second);
+        }
+        out << "\n";
+    }
+
+    out.close();
+    return 0;
+}
+
+std::unordered_map<std::string, ConfigValue> load_config(const std::string &config_file)
+{
+    std::ifstream in(config_file);
+    if (!in)
+    {
+        throw std::runtime_error("Could not open config file: " + config_file);
+    }
+
+    std::unordered_map<std::string, ConfigValue> config;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        size_t delim_pos = line.find(':');
+        if (delim_pos == std::string::npos)
+            continue;
+
+        std::string key = line.substr(0, delim_pos);
+        std::string value_str = line.substr(delim_pos + 1);
+        // Trim whitespace
+        key.erase(0, key.find_first_not_of(" \t"));
+        key.erase(key.find_last_not_of(" \t") + 1);
+        value_str.erase(0, value_str.find_first_not_of(" \t"));
+        value_str.erase(value_str.find_last_not_of(" \t") + 1);
+
+        // Try to parse as size_t, then float, else string
+        try
+        {
+            size_t idx;
+            size_t value_size_t = std::stoull(value_str, &idx);
+            if (idx == value_str.size())
+            {
+                config[key] = value_size_t;
+                continue;
+            }
+        }
+        catch (...)
+        {
+        }
+
+        try
+        {
+            size_t idx;
+            float value_float = std::stof(value_str, &idx);
+            if (idx == value_str.size())
+            {
+                config[key] = value_float;
+                continue;
+            }
+        }
+        catch (...)
+        {
+        }
+
+        config[key] = value_str;
+    }
+
+    in.close();
+    return config;
 }

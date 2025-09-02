@@ -15,8 +15,9 @@
 /// @brief Estimate the number of tokens that will be generated from a FASTA file
 /// @param fasta_path Path to the FASTA file
 /// @param token_len Length of each token/window
+/// @param stride Length of non-overlap part between 2 windows
 /// @return Estimated number of tokens (including forward and reverse complement)
-size_t estimate_token_count(const std::string &fasta_path, int token_len);
+size_t estimate_token_count(const std::string &fasta_path, int token_len, size_t stride = 1);
 
 /// @brief Compute the reverse complement of a DNA sequence
 /// @param seq Input DNA sequence string
@@ -47,14 +48,16 @@ std::pair<const char*, size_t> read_fasta(const std::string &fasta_file, std::un
 /// @param data_size Size of data
 /// @param fasta_file Original filename (for estimation)
 /// @param ref_len Length of each reference sequence to cut into (doesn't include PREFIX/POSTFIX)
+/// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
-std::vector<std::string> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, int ref_len);
+std::vector<std::string> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
 
 /// @brief Combined FASTA formatting with I/O handling
 /// @param fasta_file Path to the FASTA file
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX)
+/// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
-std::vector<std::string> preprocess_fasta(const std::string &fasta_file, int ref_len);
+std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1);
 
 /// @brief Wrapper function for FASTQ preprocessing that chooses optimal method
 /// @param fastq_file Path to the FASTQ file

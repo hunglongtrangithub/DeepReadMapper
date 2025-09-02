@@ -21,10 +21,16 @@ namespace Config
 
     namespace Build
     {
-        constexpr const int DIM = 128;              // Vector dimension
         constexpr const int EFC = 128;              // Exploration factor for HNSW
         constexpr const int GPH_DEG = 64;           // Graph degree (or M) in HNSW
-        constexpr const int MAX_ELEMENTS = 1000000; // Max number of elements in the index, keep it const for testing. Later use the ref file length to have precise value.
+
+        constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
+
+        constexpr const double SAMPLE_RATE = 0.2; // Fraction of data to use for training PQ codebooks
+
+        //! Below are deprecated and only use for testing purpose
+        constexpr const int DIM = 128;              // Vector dimension. Keep it const for testing. 
+        constexpr const int MAX_ELEMENTS = 1000000; // Max number of elements in the index, keep it const for testing.
     }
 
     namespace Search
