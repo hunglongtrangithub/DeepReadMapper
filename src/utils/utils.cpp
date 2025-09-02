@@ -339,7 +339,7 @@ int save_config(const std::unordered_map<std::string, ConfigValue> &config, cons
 
     std::string config_path = folder_path + "/" + config_file;
 
-    std::ofstream out(config_file);
+    std::ofstream out(config_path);
     if (!out)
     {
         throw std::runtime_error("Could not create config file: " + config_file);

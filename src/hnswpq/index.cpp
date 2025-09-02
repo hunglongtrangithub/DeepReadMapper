@@ -101,7 +101,7 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
     estimate_memory(num_elements, dim, M_pq, nbits, M_hnsw, n_train);
     std::cout << std::endl;
 
-    std::cout << "[BUILD INDEX] Creating training set: " << n_train << " / " << num_elements << " vectors (" << (Config::Build::SAMPLE_RATE * 100) << "%% dataset)" << std::endl;
+    std::cout << "[BUILD INDEX] Creating training set: " << n_train << " / " << num_elements << " vectors (" << (Config::Build::SAMPLE_RATE * 100) << "% dataset)" << std::endl;
 
     // Create training set
     std::vector<float> train_data = create_training_set(input_data, n_train);
