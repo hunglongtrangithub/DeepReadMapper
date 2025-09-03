@@ -185,7 +185,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
 /// @return Vector of input sequences as strings
-std::vector<std::string> read_file(const std::string &file_path, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len, size_t stride)
 {
     // Check file extension
     std::string file_ext = std::filesystem::path(file_path).extension().string();
@@ -202,16 +202,19 @@ std::vector<std::string> read_file(const std::string &file_path, size_t ref_len,
     else if (file_ext == ".fastq")
     {
         std::cout << "Detected FASTQ file format." << std::endl;
-        return preprocess_fastq(file_path);
+
+        // For FASTQ, we only return sequences without labels
+        return {preprocess_fastq(file_path), std::vector<size_t>{}};
     }
 
     std::cout << "Detected plain text file format." << std::endl;
 
 // For .txt or other plain text files, use mmap if available
+// Also return empty labels vector
 #ifdef __linux__
-    return read_txt_mmap(file_path); // Use memory mapping on Linux
+    return {read_txt_mmap(file_path), std::vector<size_t>{}};
 #else
-    return read_txt_default(file_path);
+    return {read_txt_default(file_path), std::vector<size_t>{}};
 #endif
 }
 
@@ -260,7 +263,6 @@ void analyze_input(const std::vector<std::string> &sequences)
 /// @param k Number of nearest neighbors to save.
 /// @param use_npy Whether to save results in .npy format (default: true).
 /// @return 0 if successful.
-// Replace the save_results function with this simplified version:
 
 int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy)
 {
@@ -425,4 +427,48 @@ std::unordered_map<std::string, ConfigValue> load_config(const std::string &conf
 
     in.close();
     return config;
+}
+
+int save_id_map(const std::vector<size_t> &labels, const std::string &folder_path, const std::string &mapping_file)
+{
+    std::filesystem::create_directories(folder_path);
+
+    std::string mapping_path = folder_path + "/" + mapping_file;
+
+    std::ofstream mapping(mapping_path, std::ios::binary);
+    if (!mapping)
+    {
+        throw std::runtime_error("Could not create mapping file: " + mapping_file);
+    }
+
+    mapping.write(reinterpret_cast<const char *>(labels.data()),
+                  labels.size() * sizeof(size_t));
+    mapping.close();
+    return 0;
+}
+
+std::vector<size_t> load_id_map(const std::string &mapping_file)
+{
+    std::ifstream mapping(mapping_file, std::ios::binary);
+    if (!mapping)
+    {
+        throw std::runtime_error("Could not open mapping file: " + mapping_file);
+    }
+
+    // Get file size
+    mapping.seekg(0, std::ios::end);
+    size_t file_size = mapping.tellg();
+    mapping.seekg(0, std::ios::beg);
+
+    if (file_size % sizeof(size_t) != 0)
+    {
+        throw std::runtime_error("Mapping file size is not a multiple of size_t");
+    }
+
+    size_t num_labels = file_size / sizeof(size_t);
+    std::vector<size_t> labels(num_labels);
+
+    mapping.read(reinterpret_cast<char *>(labels.data()), file_size);
+    mapping.close();
+    return labels;
 }

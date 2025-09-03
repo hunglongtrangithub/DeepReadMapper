@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 
     // Load input data
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    std::vector<std::string> sequences = read_file(ref_file);
+    auto [sequences, _] = read_file(ref_file);
 
     if (sequences.empty())
     {

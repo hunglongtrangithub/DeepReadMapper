@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
 
         auto start_time = std::chrono::high_resolution_clock::now();
-        std::vector<std::string> sequences = read_file(sequences_file);
+        auto [sequences, _] = read_file(sequences_file);
 
         if (sequences.empty())
         {
@@ -152,20 +152,22 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        // Save results using cnpy
+        // TODO: Implement Post-processing step
+        // 1st: Translate neighbor ids into actual sequences
+        //* The translator also implicitly translate sparse ids into actual ids through bidirectional extend using stride and ref_len
+        // 2nd: Rerank based on SM-score and shrink down to top-K
+
+
+        // Save results to disk
         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        // Determine file extensions based on format
-        std::string indices_output = indices_file;
-        std::string distances_output = distances_file;
-
-        save_results(neighbors, distances, indices_output, distances_output, k, use_npy);
+        save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
-        std::cout << "[MAIN] Results saved to " << indices_output << " and " << distances_output << std::endl;
+        std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
         std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();

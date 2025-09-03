@@ -15,6 +15,7 @@
 #include <filesystem> // C++17
 #include <variant>
 #include <unordered_map>
+#include <algorithm>
 
 #include "cnpy.h"
 
@@ -35,7 +36,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path);
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
 /// @return Vector of input sequences as strings
-std::vector<std::string> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1);
 
 /// @brief Analyze input sequences and print statistics.
 /// @param sequences Vector of input sequences as strings.
@@ -75,3 +76,16 @@ int save_config(const std::unordered_map<std::string, ConfigValue> &config, cons
 /// @return Unordered map of config parameters.
 /// @example {"dim": 128, "M_pq": 16, "nbits": 8, "M_hnsw": 32, "EFC": 200, "EF": 50, "K": 10, "index_type": "HNSWPQ"}
 std::unordered_map<std::string, ConfigValue> load_config(const std::string &config_file);
+
+/// @brief Save custom label mapping to a binary file.
+/// @param labels Vector of labels to save.
+/// @param folder_path Folder path to save mapping file.
+/// @param mapping_file Mapping file name
+/// @return 0 if successful.
+int save_id_map(const std::vector<size_t> &labels, const std::string &folder_path, const std::string &mapping_file = "id_map.bin");
+
+/// @brief Load custom label mapping from a binary file.
+/// @param folder_path Folder path where mapping file is located.
+/// @param mapping_file Mapping file name
+/// @return Vector of labels loaded from file.
+std::vector<size_t> load_id_map(const std::string &mapping_file = "id_map.bin");

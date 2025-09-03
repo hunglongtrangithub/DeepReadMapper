@@ -54,8 +54,8 @@ include_directories(
     includes/inference
     includes/utils
     includes/hnswlib_dir # Original HNSW
-    includes/hnswm # Minh's HNSW
-    includes/gann_hnsw # GANN's HNSW
+    # includes/hnswm # Minh's HNSW
+    # includes/gann_hnsw # GANN's HNSW
     includes/hnswpq # Faiss HNSWPQ
     external/cereal/include
     external/cnpy
@@ -75,7 +75,7 @@ set(PIPELINE_SOURCES
     src/inference/preprocess.cpp
 
     # For HNSW search
-    src/hnswlib_dir/search.cpp
+    # src/hnswlib_dir/search.cpp
     # src/hnswm/hnsw.cpp
     # src/hnswm/bruteforce.cpp
     # src/gann_hnsw/gann_hnsw.cpp
@@ -108,8 +108,6 @@ set(INDEX_SOURCES
     src/inference/preprocess.cpp
     # For HNSW indexing
     src/hnswlib_dir/index.cpp
-    src/hnswm/hnsw.cpp
-    src/hnswm/bruteforce.cpp
 )
 
 # Create index executable
@@ -140,117 +138,117 @@ target_link_libraries(inference
 )
 
 # DEFINE executable for testing HNSW from Minh's code
-set(HNSWM_BUILD_SRCS
-    # For Inference
-    src/utils/parse_inputs.cpp
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
+# set(HNSWM_BUILD_SRCS
+#     # For Inference
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/utils/tok2index.cpp
+#     src/inference/vectorize.cpp
+#     src/inference/fast_model.cpp
+#     src/inference/preprocess.cpp
 
-    # For HNSW indexing
-    src/hnswm/index.cpp
-    src/hnswm/hnsw.cpp
-    src/hnswm/bruteforce.cpp
-)
+#     # For HNSW indexing
+#     src/hnswm/index.cpp
+#     src/hnswm/hnsw.cpp
+#     src/hnswm/bruteforce.cpp
+# )
 
-add_executable(hnswm_build ${HNSWM_BUILD_SRCS})
-target_link_libraries(hnswm_build
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    cnpy
-)
+# add_executable(hnswm_build ${HNSWM_BUILD_SRCS})
+# target_link_libraries(hnswm_build
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     cnpy
+# )
 
-set(HNSWM_SEARCH_SRCS
-    # For Inference
-    src/utils/parse_inputs.cpp
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
+# set(HNSWM_SEARCH_SRCS
+#     # For Inference
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/utils/tok2index.cpp
+#     src/inference/vectorize.cpp
+#     src/inference/fast_model.cpp
+#     src/inference/preprocess.cpp
 
-    # For HNSW search
-    src/hnswm/search.cpp
-    src/hnswm/hnsw.cpp
-    src/hnswm/bruteforce.cpp
-)
+#     # For HNSW search
+#     src/hnswm/search.cpp
+#     src/hnswm/hnsw.cpp
+#     src/hnswm/bruteforce.cpp
+# )
 
-add_executable(hnswm_search ${HNSWM_SEARCH_SRCS})
-target_link_libraries(hnswm_search
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    cnpy
-)
+# add_executable(hnswm_search ${HNSWM_SEARCH_SRCS})
+# target_link_libraries(hnswm_search
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     cnpy
+# )
 
 # DEFINE executable for testing HNSWLib search
-set(HNSWLIB_SEARCH_SRCS
-    src/hnswlib_dir/test_search.cpp
-    # For Inference
-    src/utils/parse_inputs.cpp
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
+# set(HNSWLIB_SEARCH_SRCS
+#     src/hnswlib_dir/test_search.cpp
+#     # For Inference
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/utils/tok2index.cpp
+#     src/inference/vectorize.cpp
+#     src/inference/fast_model.cpp
+#     src/inference/preprocess.cpp
 
-    # For HNSW search
-    src/hnswlib_dir/search.cpp
-)
+#     # For HNSW search
+#     src/hnswlib_dir/search.cpp
+# )
 
-add_executable(hnswlib_search ${HNSWLIB_SEARCH_SRCS})
-target_link_libraries(hnswlib_search
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    hnswlib
-    cnpy
-)
+# add_executable(hnswlib_search ${HNSWLIB_SEARCH_SRCS})
+# target_link_libraries(hnswlib_search
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     hnswlib
+#     cnpy
+# )
 
 # DEFINE executable for testing GANN's HNSW indexing
-set(GANN_INDEX_SRCS
-    src/gann_hnsw/test_gann_build.cpp
-    # For Inference
-    src/utils/parse_inputs.cpp
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
+# set(GANN_INDEX_SRCS
+#     src/gann_hnsw/test_gann_build.cpp
+#     # For Inference
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/utils/tok2index.cpp
+#     src/inference/vectorize.cpp
+#     src/inference/fast_model.cpp
+#     src/inference/preprocess.cpp
 
-    # For GANN's HNSW indexing
-    src/gann_hnsw/gann_hnsw.cpp
-)
+#     # For GANN's HNSW indexing
+#     src/gann_hnsw/gann_hnsw.cpp
+# )
 
-add_executable(gann_index ${GANN_INDEX_SRCS})
+# add_executable(gann_index ${GANN_INDEX_SRCS})
 
-target_link_libraries(gann_index
-    OpenMP::OpenMP_CXX
-    openvino::runtime
-    cnpy
-)
+# target_link_libraries(gann_index
+#     OpenMP::OpenMP_CXX
+#     openvino::runtime
+#     cnpy
+# )
 
 # DEFINE executable for testing GANN's HNSW search
-set(GANN_SEARCH_SRCS
-    src/gann_hnsw/test_gann_search.cpp
-    # For Inference
-    src/utils/parse_inputs.cpp
-    src/utils/utils.cpp
-    src/utils/tok2index.cpp
-    src/inference/vectorize.cpp
-    src/inference/fast_model.cpp
-    src/inference/preprocess.cpp
+# set(GANN_SEARCH_SRCS
+#     src/gann_hnsw/test_gann_search.cpp
+#     # For Inference
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/utils/tok2index.cpp
+#     src/inference/vectorize.cpp
+#     src/inference/fast_model.cpp
+#     src/inference/preprocess.cpp
 
-    # For GANN's HNSW search
-    src/gann_hnsw/gann_hnsw.cpp
-)
+#     # For GANN's HNSW search
+#     src/gann_hnsw/gann_hnsw.cpp
+# )
 
-add_executable(gann_search ${GANN_SEARCH_SRCS})
-target_link_libraries(gann_search
-    OpenMP::OpenMP_CXX
-    openvino::runtime
-    cnpy
-)
+# add_executable(gann_search ${GANN_SEARCH_SRCS})
+# target_link_libraries(gann_search
+#     OpenMP::OpenMP_CXX
+#     openvino::runtime
+#     cnpy
+# )
 
 # DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
 set(HNSWPQ_INDEX_SRCS
@@ -296,3 +294,16 @@ target_link_libraries(hnswpq_search
     cnpy
     ${FAISS_LIBRARY}
 )
+
+# DEFINE executable for generating ref.txt
+# set(GENERATE_REF_SRCS
+#     src/utils/parse_inputs.cpp
+#     src/utils/utils.cpp
+#     src/gen_ref.cpp
+# )
+
+# add_executable(gen_ref ${GENERATE_REF_SRCS})
+
+# target_link_libraries(gen_ref
+#     cnpy
+# )

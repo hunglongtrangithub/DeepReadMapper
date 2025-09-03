@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
     int k = std::stoi(argv[4]);
 
     std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    auto [sequences, _] = read_file(query_file);
 
     // Embed input queries
     std::cout << "[MAIN] Start inference" << std::endl;

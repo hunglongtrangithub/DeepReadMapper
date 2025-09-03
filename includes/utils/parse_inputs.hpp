@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <stdexcept>
 #include <cctype>
+#include <utility>
 #include <filesystem> // C++17
 #include "utils.hpp"
 
@@ -28,20 +29,20 @@ std::string reverse_complement(const std::string &seq);
 /// @param fasta_file Path to the FASTA file
 /// @param buffer Buffer to store file data (for default I/O)
 /// @return Pair of data pointer and size
-std::pair<const char*, size_t> read_fasta_default(const std::string &fasta_file, std::unique_ptr<char[]> &buffer);
+std::pair<const char *, size_t> read_fasta_default(const std::string &fasta_file, std::unique_ptr<char[]> &buffer);
 
 /// @brief Read FASTA file using memory mapping (Linux only)
 /// @param fasta_file Path to the FASTA file
 /// @param fd File descriptor (for cleanup)
 /// @return Pair of data pointer and size
-std::pair<const char*, size_t> read_fasta_mmap(const std::string &fasta_file, int &fd);
+std::pair<const char *, size_t> read_fasta_mmap(const std::string &fasta_file, int &fd);
 
 /// @brief Wrapper function for FASTA file reading
 /// @param fasta_file Path to the FASTA file
 /// @param buffer Buffer to store file data (for default I/O)
 /// @param fd File descriptor (for mmap cleanup)
 /// @return Pair of data pointer and size
-std::pair<const char*, size_t> read_fasta(const std::string &fasta_file, std::unique_ptr<char[]> &buffer, int &fd);
+std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::unique_ptr<char[]> &buffer, int &fd);
 
 /// @brief Process FASTA data (single-threaded, separated from I/O)
 /// @param data Pointer to file data
@@ -50,14 +51,14 @@ std::pair<const char*, size_t> read_fasta(const std::string &fasta_file, std::un
 /// @param ref_len Length of each reference sequence to cut into (doesn't include PREFIX/POSTFIX)
 /// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
-std::vector<std::string> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
 
 /// @brief Combined FASTA formatting with I/O handling
 /// @param fasta_file Path to the FASTA file
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX)
 /// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
-std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1);
 
 /// @brief Wrapper function for FASTQ preprocessing that chooses optimal method
 /// @param fastq_file Path to the FASTQ file

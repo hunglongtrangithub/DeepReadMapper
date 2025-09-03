@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
     }
     std::string sequences_file = argv[1];
 
-    std::vector<std::string> sequences = read_file(sequences_file);
+    auto [sequences, _] = read_file(sequences_file);
 
     // Default config
     Vectorizer vectorizer;

@@ -82,7 +82,7 @@ std::vector<float> create_training_set(
     return train_data;
 }
 
-void build_faiss_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M_pq, int nbits, int M_hnsw, int EFC)
+void build_faiss_index(const std::vector<std::vector<float>> &input_data, const std::vector<size_t> labels, const std::string &index_file, int M_pq, int nbits, int M_hnsw, int EFC)
 {
     // Build parameters
     size_t dim = input_data[0].size();
@@ -143,7 +143,19 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
     // Add vectors with progress tracking
     auto build_start = std::chrono::high_resolution_clock::now();
 
-    // FAISS adds all vectors at once, so we simulate progress
+    // Convert labels to faiss:idx_t if provided
+    if (labels.empty() || labels.size() != num_elements)
+    {
+        throw std::runtime_error("Labels size does not match number of input vectors");
+    }
+
+    std::vector<faiss::idx_t> faiss_labels(labels.size());
+    for (size_t i = 0; i < labels.size(); ++i)
+    {
+        faiss_labels[i] = static_cast<faiss::idx_t>(labels[i]);
+    }
+
+    // Add vector by batches
     const size_t batch_size = 10000;
     for (size_t start = 0; start < num_elements; start += batch_size)
     {
@@ -151,7 +163,9 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
         size_t batch_count = end - start;
 
         // Add batch to index
-        index.add(batch_count, vectors_flat.data() + start * dim);
+        // index.add(batch_count, vectors_flat.data() + start * dim);
+
+        index.add_with_ids(batch_count, vectors_flat.data() + start * dim, faiss_labels.data() + start);
 
         // Update progress bar
         size_t progress_percent = ((end) * 100) / num_elements;
@@ -217,7 +231,7 @@ int main(int argc, char *argv[])
 
     // Load input data
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    std::vector<std::string> sequences = read_file(ref_file, ref_len, stride);
+    auto [sequences, labels] = read_file(ref_file, ref_len, stride);
 
     if (sequences.empty())
     {
@@ -248,12 +262,13 @@ int main(int argc, char *argv[])
     };
 
     save_config(config, index_prefix);
+    save_id_map(labels, index_prefix);
     std::cout << "[BUILD INDEX] Config saved successfully." << std::endl;
 
     std::cout << "[BUILD INDEX] Building FAISS IndexHNSWPQ..." << std::endl;
 
     // Build FAISS index
-    build_faiss_index(embeddings, index_file, M_pq, nbits, M_hnsw, EFC);
+    build_faiss_index(embeddings, labels, index_file, M_pq, nbits, M_hnsw, EFC);
 
     std::cout << "[BUILD INDEX] Finished index building process." << std::endl;
 

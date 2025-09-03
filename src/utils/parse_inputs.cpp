@@ -169,9 +169,7 @@ std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::u
 }
 
 // Single-threaded FASTA data processing
-std::vector<std::string> format_fasta(const char *data, size_t data_size,
-                                      const std::string &fasta_file,
-                                      size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
 {
     std::cout << "Processing FASTA data..." << std::endl;
 
@@ -186,8 +184,12 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size,
 
     // Preallocate vector
     size_t estimated_size = estimate_token_count(fasta_file, ref_len, stride);
+
     std::vector<std::string> result;
+    std::vector<size_t> labels;
+
     result.reserve(estimated_size);
+    labels.reserve(estimated_size);
 
     std::cout << "Estimated number of sequences: " << estimated_size << std::endl;
     std::cout << "Estimated RAM usage: " << (estimated_size * 176) / (1024 * 1024 * 1024) << " GB" << std::endl
@@ -196,6 +198,7 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size,
     std::string buffer;
     buffer.reserve(ref_len + std::max<int>(1024, stride));
     size_t buf_start = 0;
+    size_t position = 0;
 
     // Setup progress bar
     indicators::show_console_cursor(false);
@@ -231,14 +234,17 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size,
             forward.reserve(2 + ref_len);
             forward.append(PREFIX).append(window).append(POSTFIX);
             result.push_back(forward);
+            labels.push_back((position << 1) | 0); // Forward
 
             std::string rev = reverse_complement(window);
             std::string reverse;
             reverse.reserve(2 + ref_len);
             reverse.append(PREFIX).append(rev).append(POSTFIX);
             result.push_back(reverse);
+            labels.push_back((position << 1) | 1); // Reverse complement
 
             buf_start += stride;
+            position += stride;
         }
 
         // Periodically compact the buffer to avoid unbounded growth / big memory
@@ -261,11 +267,11 @@ std::vector<std::string> format_fasta(const char *data, size_t data_size,
     indicators::show_console_cursor(true);
 
     std::cout << "Successfully processed " << result.size() << " sequences" << std::endl;
-    return result;
+    return {result, labels};
 }
 
 // Combined wrapper function that handles both I/O and processing
-std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride)
 {
     std::unique_ptr<char[]> buffer;
     int fd = -1;
@@ -274,7 +280,7 @@ std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t 
     auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
 
     // Step 2: Process data
-    auto result = format_fasta(data, data_size, fasta_file, ref_len, stride);
+    auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride);
 
     // Step 3: Cleanup
 #ifdef __linux__
@@ -285,7 +291,7 @@ std::vector<std::string> preprocess_fasta(const std::string &fasta_file, size_t 
     }
 #endif
 
-    return result;
+    return {result, labels};
 }
 
 // FASTQ preprocessing using traditional file I/O
@@ -309,6 +315,7 @@ std::vector<std::string> preprocess_fastq_default(const std::string &fastq_file)
 
     // Estimate number of sequences (rough estimate: file_size / 200 for FASTQ)
     std::vector<std::string> sequences;
+
     sequences.reserve(file_size / 200 + 1000);
 
     // Setup progress bar
