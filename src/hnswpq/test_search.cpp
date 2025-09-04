@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < n_rows; ++i)
     {
-        for (size_t j = 0; j < k; ++j)
+        for (size_t j = 0; j < static_cast<size_t>(k); ++j)
         {
             host_indices[i * k + j] = static_cast<uint32_t>(neighbors[i][j]);
             host_distances[i * k + j] = distances[i][j];

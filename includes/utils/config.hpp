@@ -42,4 +42,10 @@ namespace Config
         constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
     }
 
+    namespace PostProcess
+    {
+        constexpr const int NUM_THREADS = 32; // Number of threads for parallel post-processing (Smith-Waterman) and reranking
+        constexpr const int BATCH_SIZE = 1000; // Number of queries per batch during reranking (deprecated)
+    }
+
 }

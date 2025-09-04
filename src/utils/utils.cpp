@@ -184,7 +184,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
 /// @param file_path Path to the input file (FASTA, FASTQ, or plain text).
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
-/// @return Vector of input sequences as strings
+/// @return Vector of input sequences as strings.
 std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len, size_t stride)
 {
     // Check file extension

@@ -1,6 +1,7 @@
 #include "cnpy.h"
 #include "config.hpp"
 #include "utils.hpp"
+#include "post_processor.hpp"
 #include "vectorize.hpp"
 // #include "hnswlib_dir/search.hpp"
 #include "hnswpq/search.hpp"
@@ -8,9 +9,9 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3 || argc > 7)
+    if (argc < 4 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <index_prefix> <sequences.fastq> [EF] [K] [output_dir] [use_npy]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <index_prefix> <quer_seqs.fastq> <ref_seqs.fasta> [EF] [K] [output_dir] [use_npy]" << std::endl;
         std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
         std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
 
@@ -29,7 +30,9 @@ int main(int argc, char *argv[])
         const std::string index_prefix = argv[1];
 
         // Craft index file name and folder structure
-        const std::string index_file = index_prefix + "/" + index_prefix + ".index";
+        std::string basename = std::filesystem::path(index_prefix).filename().string();
+
+        const std::string index_file = index_prefix + "/" + basename + ".index";
         const std::string config_file = index_prefix + "/" + "config.txt";
 
         // Load index config
@@ -39,16 +42,17 @@ int main(int argc, char *argv[])
         }
         std::unordered_map<std::string, ConfigValue> config = load_config(config_file);
 
-        const std::string sequences_file = argv[2];
+        const std::string query_seqs_file = argv[2];
+        const std::string ref_seqs_file = argv[3];
 
         // Optional HNSW search parameters
-        const int ef = (argc >= 4) ? std::stoi(argv[3]) : Config::Search::EF;
-        const int k = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::K;
+        const int ef = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::EF;
+        const int k = (argc >= 6) ? std::stoi(argv[5]) : Config::Search::K;
 
         // Optional output file names with defaults
-        const std::string output_dir = (argc >= 6) ? argv[5] : ".";
+        const std::string output_dir = (argc >= 7) ? argv[6] : ".";
 
-        const bool use_npy = (argc >= 7) ? std::string(argv[6]) == "true" : false;
+        const bool use_npy = (argc >= 8) ? std::string(argv[7]) == "true" : false;
 
         // Craft full output paths
         const std::string indices_file = output_dir + (use_npy ? "/indices.npy" : "/indices.bin");
@@ -61,7 +65,8 @@ int main(int argc, char *argv[])
         const size_t model_out_size = Config::Inference::MODEL_OUT_SIZE;
 
         std::cout << "[MAIN] PIPELINE CONFIG:" << std::endl;
-        std::cout << "[MAIN] Input file: " << sequences_file << std::endl;
+        std::cout << "[MAIN] Input file: " << query_seqs_file << std::endl;
+        std::cout << "[MAIN] Reference file: " << ref_seqs_file << std::endl;
         std::cout << "[MAIN] Model path: " << model_path << std::endl;
         std::cout << "[MAIN] Batch size: " << batch_size << std::endl;
         std::cout << "[MAIN] Max sequence length: " << max_len << std::endl;
@@ -74,15 +79,17 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
 
         auto start_time = std::chrono::high_resolution_clock::now();
-        auto [sequences, _] = read_file(sequences_file);
+        auto [query_sequences, __] = read_file(query_seqs_file);
 
-        if (sequences.empty())
+        if (query_sequences.empty())
         {
-            std::cerr << "No sequences found in input file!" << std::endl;
+            std::cerr << "No query_sequences found in input file!" << std::endl;
             return 1;
         }
 
-        // analyze_input(sequences);
+        // analyze_input(query_sequences);
+
+        auto [ref_sequences, _] = read_file(ref_seqs_file, std::get<size_t>(config["ref_len"]), std::get<size_t>(config["stride"]));
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -126,7 +133,7 @@ int main(int argc, char *argv[])
         // Run vectorization
         start_time = std::chrono::high_resolution_clock::now();
 
-        std::vector<std::vector<float>> embeddings = vectorizer.vectorize(sequences);
+        std::vector<std::vector<float>> embeddings = vectorizer.vectorize(query_sequences);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -152,23 +159,42 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        // TODO: Implement Post-processing step
-        // 1st: Translate neighbor ids into actual sequences
-        //* The translator also implicitly translate sparse ids into actual ids through bidirectional extend using stride and ref_len
-        // 2nd: Rerank based on SM-score and shrink down to top-K
-
-
-        // Save results to disk
-        std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+        std::cout << "[MAIN] POST-PROCESSING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+        size_t ref_len = std::get<size_t>(config["ref_len"]);
+        size_t stride = std::get<size_t>(config["stride"]);
+
+
+        auto [final_seqs, sw_scores] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        std::cout << "[MAIN] Post-processing completed" << std::endl;
+        std::cout << "[MAIN] Post-processing time: " << duration.count() << " ms" << std::endl << std::endl;
 
-        std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
-        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+        // Print first 10 cands of first 5 queries for verification
+        for (size_t i = 0; i < std::min(size_t(5), query_sequences.size()); ++i)
+        {
+            std::cout << "Query " << i << " - reranked candidates:" << std::endl;
+            for (size_t j = 0; j < std::min(size_t(10), size_t(k)); ++j)
+            {
+                size_t idx = i * k + j;
+                std::cout << "  Cand " << j << ": " << final_seqs[idx] << " (SW-score: " << sw_scores[idx] << ")" << std::endl;
+            }
+        }
+
+        // Save results to disk
+        // std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+        // start_time = std::chrono::high_resolution_clock::now();
+
+        // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+
+        // end_time = std::chrono::high_resolution_clock::now();
+        // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        // std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
+        // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);

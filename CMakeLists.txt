@@ -5,7 +5,7 @@ project(DeepAlignerCPU VERSION 1.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Set compiler flags
+# Set compiler flags - march=native already includes AVX2
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp -march=native")
 add_compile_options(-Wall)
 
@@ -70,6 +70,8 @@ set(PIPELINE_SOURCES
     src/utils/parse_inputs.cpp
     src/utils/utils.cpp
     src/utils/tok2index.cpp
+    src/utils/post_processor.cpp
+
     src/inference/vectorize.cpp
     src/inference/fast_model.cpp
     src/inference/preprocess.cpp
@@ -307,3 +309,15 @@ target_link_libraries(hnswpq_search
 # target_link_libraries(gen_ref
 #     cnpy
 # )
+
+# DEFINE executable for SW calc
+set(SW_SRCS
+    src/test_sw_score.cpp
+    src/utils/post_processor.cpp
+    src/utils/utils.cpp
+)
+add_executable(calc_sw ${SW_SRCS})
+
+target_link_libraries(calc_sw
+    cnpy
+)
