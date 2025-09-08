@@ -165,22 +165,25 @@ int main(int argc, char *argv[])
         size_t ref_len = std::get<size_t>(config["ref_len"]);
         size_t stride = std::get<size_t>(config["stride"]);
 
+        //* Smith-Waterman reranking
+        // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k);
 
-        auto [final_seqs, sw_scores] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k);
+        //* L2 distance reranking
+        auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Post-processing completed" << std::endl;
         std::cout << "[MAIN] Post-processing time: " << duration.count() << " ms" << std::endl << std::endl;
 
-        // Print first 10 cands of first 5 queries for verification
-        for (size_t i = 0; i < std::min(size_t(5), query_sequences.size()); ++i)
+        // Print first 5 cands of first 3 queries for verification
+        for (size_t i = 0; i < std::min(size_t(3), query_sequences.size()); ++i)
         {
             std::cout << "Query " << i << " - reranked candidates:" << std::endl;
-            for (size_t j = 0; j < std::min(size_t(10), size_t(k)); ++j)
+            for (size_t j = 0; j < std::min(size_t(5), size_t(k)); ++j)
             {
                 size_t idx = i * k + j;
-                std::cout << "  Cand " << j << ": " << final_seqs[idx] << " (SW-score: " << sw_scores[idx] << ")" << std::endl;
+                std::cout << "  Cand " << j << ": " << final_seqs[idx] << " (Distance: " << final_dists[idx] << ")" << std::endl;
             }
         }
 

@@ -163,9 +163,10 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
         size_t batch_count = end - start;
 
         // Add batch to index
-        // index.add(batch_count, vectors_flat.data() + start * dim);
+        index.add(batch_count, vectors_flat.data() + start * dim);
 
-        index.add_with_ids(batch_count, vectors_flat.data() + start * dim, faiss_labels.data() + start);
+        //* Add with custom IDs, not implemented with IndexHNSWPQ
+        // index.add_with_ids(batch_count, vectors_flat.data() + start * dim, faiss_labels.data() + start);
 
         // Update progress bar
         size_t progress_percent = ((end) * 100) / num_elements;

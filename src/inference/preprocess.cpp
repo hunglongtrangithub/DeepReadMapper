@@ -41,28 +41,38 @@ std::vector<uint16_t> Preprocessor::preprocess(const std::string &seq, unsigned 
     return result;
 }
 
-std::vector<std::vector<uint16_t>> Preprocessor::preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen)
+std::vector<std::vector<uint16_t>> Preprocessor::preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen, bool verbose)
 {
     std::vector<std::vector<uint16_t>> result(seqs.size());
-    // setup progress bar
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"tokenizing + indexing"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-    for (size_t i = 0; i < seqs.size(); i++)
-    {
-        result[i] = this->preprocess(seqs[i], maxLen);
-        // update progress bar
-        if (i % 100000 == 0 || i == seqs.size() - 1)
+    
+    if (verbose) {
+        // setup progress bar
+        indicators::show_console_cursor(false);
+        indicators::ProgressBar progressBar{
+            indicators::option::BarWidth{80},
+            indicators::option::PrefixText{"tokenizing + indexing"},
+            indicators::option::ShowElapsedTime{true},
+            indicators::option::ShowRemainingTime{true}};
+        
+        for (size_t i = 0; i < seqs.size(); i++)
         {
-            float newProgressCompleted = static_cast<float>(i) / seqs.size() * 100;
-            progressBar.set_progress(newProgressCompleted);
+            result[i] = this->preprocess(seqs[i], maxLen);
+            // update progress bar
+            if (i % 100000 == 0 || i == seqs.size() - 1)
+            {
+                float newProgressCompleted = static_cast<float>(i) / seqs.size() * 100;
+                progressBar.set_progress(newProgressCompleted);
+            }
+        }
+        // Close Current progress bar
+        progressBar.mark_as_completed();
+        indicators::show_console_cursor(true);
+    } else {
+        for (size_t i = 0; i < seqs.size(); i++)
+        {
+            result[i] = this->preprocess(seqs[i], maxLen);
         }
     }
-    // Close Current progress bar
-    progressBar.mark_as_completed();
-    indicators::show_console_cursor(true);
+    
     return result;
 }

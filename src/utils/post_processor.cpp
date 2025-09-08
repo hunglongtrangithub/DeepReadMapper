@@ -1,5 +1,4 @@
 #include "post_processor.hpp"
-#include "progressbar.h"
 
 //! Only use for special HNSW index with encoded labels. Ignore if using default sequential labels.
 PositionInfo position_decode(size_t label, const std::vector<size_t> &mapping)
@@ -95,209 +94,130 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
         {
             ranges.emplace_back(start, end);
         }
+    }
 
-        // Step 2: Collect all unique positions from merged ranges
-        std::vector<size_t> unique_positions;
-        for (const auto &[start, end] : ranges)
+    // Step 2: Collect all unique positions from merged ranges
+    std::vector<size_t> unique_positions;
+    for (const auto &[start, end] : ranges)
+    {
+        for (size_t pos = start; pos < end; ++pos)
         {
-            for (size_t pos = start; pos < end; ++pos)
-            {
-                unique_positions.push_back(pos);
-            }
+            unique_positions.push_back(pos);
         }
+    }
 
-        // Step 3: Fetch sequences
-        results.resize(unique_positions.size());
-
-
-        for (size_t pos : unique_positions)
-        {
-            results.push_back(find_sequence(ref_seqs, pos, ref_len));
-        }
-        
+    // Step 3: Fetch sequences
+    results.reserve(unique_positions.size());
+    for (size_t pos : unique_positions)
+    {
+        results.push_back(find_sequence(ref_seqs, pos, ref_len));
     }
 
     return results;
 }
 
-int calc_sw_score_avx2(const std::string &seq1, const std::string &seq2)
+// Smith-Waterman version (size_t neighbors)
+std::pair<std::vector<std::string>, std::vector<int>> post_process(
+    const std::vector<std::vector<size_t>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k)
 {
-    std::cout << "Using AVX2 optimized Smith-Waterman" << std::endl;
-    // TODO: Implement AVX2 optimized Smith-Waterman here
-    // https://www.danysoft.com/estaticos/free/24%20-%20Case%20study%20-%20Pairwise%20sequence%20alignment%20with%20the%20Smith-Waterman%20algorithm.pdf
-    return 0; // Placeholder
+    std::cout << "[POST-PROCESS] Configs:" << std::endl;
+    std::cout << "[POST-PROCESS] Metrics: sw_score" << std::endl;
+    std::cout << "[POST-PROCESS] Neighbors type: size_t" << std::endl;
+    return post_process_core<std::string, int>(neighbors, distances, ref_seqs, query_seqs, ref_len, stride, k, [](const std::vector<std::string> &cand_seqs, const std::string &query_seq, size_t k)
+                                               { return reranker(cand_seqs, query_seq, k); });
 }
 
-int calc_sw_score(const std::string &seq1, const std::string &seq2)
+// Smith-Waterman version (long int neighbors)
+std::pair<std::vector<std::string>, std::vector<int>> post_process(
+    const std::vector<std::vector<long int>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k)
 {
-    // #ifdef __AVX2__
-    //     // AVX2 optimized version here
-    //     return calc_sw_score_avx2(seq1, seq2);
-    // #else
-    // Fallback scalar version
-    // Scoring parameters to match Python implementation exactly
-    const int match = 1;
-    const int mismatch = -1;
-    const int gap_penalty = -1; // gap penalty of 1 in Python = -1 score
 
-    size_t len1 = seq1.size();
-    size_t len2 = seq2.size();
+    std::cout << "[POST-PROCESS] Configs:" << std::endl;
+    std::cout << "[POST-PROCESS] Metrics: sw_score" << std::endl;
+    std::cout << "[POST-PROCESS] Neighbors type: long int" << std::endl;
 
-    // Create DP matrix
-    std::vector<std::vector<int>> dp(len1 + 1, std::vector<int>(len2 + 1, 0));
-    int max_score = 0;
-
-    // Fill DP matrix using standard Smith-Waterman with linear gap penalty
-    for (size_t i = 1; i <= len1; ++i)
-    {
-        for (size_t j = 1; j <= len2; ++j)
-        {
-            int score_match = dp[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? match : mismatch);
-            int score_delete = dp[i - 1][j] + gap_penalty;
-            int score_insert = dp[i][j - 1] + gap_penalty;
-
-            dp[i][j] = std::max({0, score_match, score_delete, score_insert});
-            max_score = std::max(max_score, dp[i][j]);
-        }
-    }
-
-    return max_score;
-    // #endif
-}
-
-float calc_l2_dist(const std::vector<float> &vec1, const std::vector<float> &vec2)
-{
-    if (vec1.size() != vec2.size())
-    {
-        throw std::invalid_argument("Vector sizes mismatch: " + std::to_string(vec1.size()) + " vs " + std::to_string(vec2.size()));
-    }
-
-    float sum = 0.0f;
-    for (size_t i = 0; i < vec1.size(); ++i)
-    {
-        float diff = vec1[i] - vec2[i];
-        sum += diff * diff;
-    }
-    return std::sqrt(sum);
-}
-
-std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vector<std::string> &cand_seqs, const std::string &query_seq, size_t k, size_t stride)
-{
-    size_t num_cands = cand_seqs.size();
-    if (num_cands == 0 || k == 0)
-        return {{}, {}};
-
-    // Step 1: Compute SW scores for all candidates
-    std::vector<int> scores(num_cands, 0);
-
-    for (size_t i = 0; i < num_cands; ++i)
-    {
-        scores[i] = calc_sw_score(cand_seqs[i], query_seq);
-    }
-
-    // Step 2: Sort candidates by score
-    std::vector<std::string> top_seqs;
-    std::vector<int> top_scores;
-
-    size_t actual_k = std::min(k, num_cands);
-    top_seqs.reserve(actual_k);
-    top_scores.reserve(actual_k);
-
-    std::vector<size_t> indices(num_cands);
-    std::iota(indices.begin(), indices.end(), 0);
-    
-    // FIX: Only partial_sort up to actual_k, not k
-    std::partial_sort(indices.begin(), indices.begin() + actual_k, indices.end(), 
-                      [&scores](size_t i1, size_t i2) { return scores[i1] > scores[i2]; });
-
-    // Step 3: Collect top actual_k sequences and scores
-    for (size_t i = 0; i < actual_k; ++i)
-    {
-        top_seqs.push_back(cand_seqs[indices[i]]);
-        top_scores.push_back(scores[indices[i]]);
-    }
-
-    return {top_seqs, top_scores};
-}
-
-std::pair<std::vector<std::string>, std::vector<int>> post_process(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k)
-{
-    //TODO: Implement L2 reranker by passed in Vectorizer and query embeddings, then find distances between embeddings
-    size_t total_queries = query_seqs.size();
-    
-    // Pre-allocate results for each query
-    std::vector<std::vector<std::string>> all_final_seqs(total_queries);
-    std::vector<std::vector<int>> all_sw_scores(total_queries);
-    
-    // Thread-safe progress tracking
-    std::atomic<size_t> completed_queries(0);
-    
-    // Hide cursor and create progress bar
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"post-processing"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
-    // Parallelize across queries
-#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
-    for (size_t i = 0; i < total_queries; ++i)
-    {
-        // Extract neighbors for this specific query
-        // std::vector<size_t> query_neighbors(neighbors[i].begin(), neighbors[i].end());
-
-        //* Debug, select only first 5 candidates (filter by HNSW score as preliminary ranking)
-        std::vector<size_t> query_neighbors(neighbors[i].begin(), neighbors[i].begin() + std::min(size_t(5), neighbors[i].size()));
-
-        // Get candidate sequences
-        std::vector<std::string> query_cand_seqs = find_sequences(ref_seqs, query_neighbors, ref_len, stride);
-
-        // Rerank candidates
-        auto [top_seqs, top_scores] = sw_reranker(query_cand_seqs, query_seqs[i], static_cast<size_t>(k), stride);
-
-        // Store results for this query
-        all_final_seqs[i] = std::move(top_seqs);
-        all_sw_scores[i] = std::move(top_scores);
-
-        // Update progress bar (thread-safe)
-        size_t current_completed = completed_queries.fetch_add(1) + 1;
-
-        if (current_completed % 100 == 0) {
-            size_t current_progress_percent = (current_completed * 100) / total_queries;
-            progressBar.set_progress(current_progress_percent);
-        }
-    }
-
-    // Flatten results
-    std::vector<std::string> final_seqs;
-    std::vector<int> sw_scores;
-    final_seqs.reserve(total_queries * k);
-    sw_scores.reserve(total_queries * k);
-    
-    for (size_t i = 0; i < total_queries; ++i)
-    {
-        final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
-        sw_scores.insert(sw_scores.end(), all_sw_scores[i].begin(), all_sw_scores[i].end());
-    }
-
-    // Complete progress bar and show cursor
-    progressBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    return {final_seqs, sw_scores};
-}
-
-// Overload to accept long int type for neighbors
-std::pair<std::vector<std::string>, std::vector<int>> post_process(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances, const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k)
-{
     // Convert long int to size_t
     std::vector<std::vector<size_t>> neighbors_size_t(neighbors.size());
     for (size_t i = 0; i < neighbors.size(); ++i)
     {
         neighbors_size_t[i].assign(neighbors[i].begin(), neighbors[i].end());
     }
-    
-    // Call the existing function
+
+    // Call the size_t version
     return post_process(neighbors_size_t, distances, ref_seqs, query_seqs, ref_len, stride, k);
+}
+
+// L2 distance version (size_t neighbors)
+std::pair<std::vector<std::string>, std::vector<float>> post_process(
+    const std::vector<std::vector<size_t>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<float>> &query_embeddings,
+    Vectorizer &vectorizer)
+{
+    std::cout << "[POST-PROCESS] Using batched reranker." << std::endl;
+    std::cout << "[POST-PROCESS] Configs:" << std::endl;
+    std::cout << "[POST-PROCESS] Metrics: L2 distance (batched)" << std::endl;
+    std::cout << "[POST-PROCESS] Neighbors type: size_t" << std::endl;
+    
+    size_t total_queries = query_embeddings.size();
+    
+    // Step 1: Collect all candidate sequences for all queries
+    std::vector<std::vector<std::string>> all_cand_seqs(total_queries);
+    for (size_t i = 0; i < total_queries; ++i) {
+        std::vector<size_t> query_neighbors(neighbors[i].begin(),
+                                           neighbors[i].begin() + std::min(size_t(5), neighbors[i].size()));
+        all_cand_seqs[i] = find_sequences(ref_seqs, query_neighbors, ref_len, stride);
+    }
+    
+    // Step 2: Batch rerank all candidates
+    auto batch_results = batch_reranker(all_cand_seqs, query_embeddings, k, vectorizer);
+    
+    // Step 3: Flatten results
+    std::vector<std::string> final_seqs;
+    std::vector<float> final_scores;
+    final_seqs.reserve(total_queries * k);
+    final_scores.reserve(total_queries * k);
+    
+    for (const auto &[seqs, scores] : batch_results) {
+        final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
+        final_scores.insert(final_scores.end(), scores.begin(), scores.end());
+
+    }
+    
+    return {final_seqs, final_scores};
+}
+
+// L2 distance version (long int neighbors)
+std::pair<std::vector<std::string>, std::vector<float>> post_process(
+    const std::vector<std::vector<long int>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<float>> &query_embeddings,
+    Vectorizer &vectorizer)
+{
+    std::cout << "[POST-PROCESS] Configs:" << std::endl;
+    std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
+    std::cout << "[POST-PROCESS] Neighbors type: long int" << std::endl;
+    // Convert long int to size_t
+    std::vector<std::vector<size_t>> neighbors_size_t(neighbors.size());
+    for (size_t i = 0; i < neighbors.size(); ++i)
+    {
+        neighbors_size_t[i].assign(neighbors[i].begin(), neighbors[i].end());
+    }
+
+    // Call the size_t version
+    return post_process(neighbors_size_t, distances, ref_seqs, query_seqs, ref_len, stride, k, query_embeddings, vectorizer);
 }

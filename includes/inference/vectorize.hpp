@@ -31,9 +31,10 @@ public:
     /**
      * Vectorizes a batch of input sequences.
      * @param input Vector of input sequences as strings.
+     * @param verbose Whether to print detailed logs (default: false)
      * @return 2D vector of floats representing the vectorized sequences.
      */
-    std::vector<std::vector<float>> vectorize(const std::vector<std::string> &input);
+    std::vector<std::vector<float>> vectorize(const std::vector<std::string> &input, bool verbose = true);
 
 private:
     std::vector<std::vector<float>> inferenceBatch(const std::vector<std::vector<std::vector<uint16_t>>> &batches);

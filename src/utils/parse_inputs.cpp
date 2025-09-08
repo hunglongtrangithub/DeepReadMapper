@@ -52,7 +52,7 @@ std::string reverse_complement(const std::string &seq)
 }
 
 // FASTA file reading using traditional file I/O
-std::pair<const char*, size_t> read_fasta_default(const std::string &fasta_file, std::unique_ptr<char[]> &buffer)
+std::pair<const char *, size_t> read_fasta_default(const std::string &fasta_file, std::unique_ptr<char[]> &buffer)
 {
     std::cout << "Reading FASTA file: " << fasta_file << std::endl;
 
@@ -80,29 +80,31 @@ std::pair<const char*, size_t> read_fasta_default(const std::string &fasta_file,
 
     // Allocate buffer and read entire file
     buffer = std::make_unique<char[]>(file_size + 1);
-    
+
     // Read in chunks to show progress
     const size_t chunk_size = 1024 * 1024; // 1MB chunks
     size_t bytes_read = 0;
     size_t last_progress_update = 0;
-    
+
     progressBar.set_progress(0);
-    
-    while (bytes_read < file_size) {
+
+    while (bytes_read < file_size)
+    {
         size_t to_read = std::min(chunk_size, file_size - bytes_read);
         infile.read(buffer.get() + bytes_read, to_read);
         bytes_read += to_read;
-        
+
         // Update progress bar
-        if (bytes_read - last_progress_update > chunk_size) {
+        if (bytes_read - last_progress_update > chunk_size)
+        {
             progressBar.set_progress((bytes_read * 100) / file_size);
             last_progress_update = bytes_read;
         }
     }
-    
+
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
-    
+
     buffer[file_size] = '\0';
     infile.close();
 
@@ -111,7 +113,7 @@ std::pair<const char*, size_t> read_fasta_default(const std::string &fasta_file,
 }
 
 // FASTA file reading using memory mapping (Linux only)
-std::pair<const char*, size_t> read_fasta_mmap(const std::string &fasta_file, int &fd)
+std::pair<const char *, size_t> read_fasta_mmap(const std::string &fasta_file, int &fd)
 {
     std::cout << "Reading FASTA file: " << fasta_file << " (using mmap)" << std::endl;
 
@@ -184,6 +186,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
 
     // Preallocate vector
     size_t estimated_size = estimate_token_count(fasta_file, ref_len, stride);
+    double mem_usage = (static_cast<double>(estimated_size) * 176.0) / (1024.0 * 1024.0);
 
     std::vector<std::string> result;
     std::vector<size_t> labels;
@@ -192,8 +195,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
     labels.reserve(estimated_size);
 
     std::cout << "Estimated number of sequences: " << estimated_size << std::endl;
-    std::cout << "Estimated RAM usage: " << (estimated_size * 176) / (1024 * 1024 * 1024) << " GB" << std::endl
-              << std::endl;
+    std::cout << "Estimated RAM usage: " << std::fixed << std::setprecision(2) << mem_usage << " MB" << std::endl;
 
     std::string buffer;
     buffer.reserve(ref_len + std::max<int>(1024, stride));
@@ -227,7 +229,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
         buffer.push_back(c);
 
         // Process as many windows as we can given current buffer contents
-        while (buffer.size() - buf_start >= ref_len) {
+        while (buffer.size() - buf_start >= ref_len)
+        {
             std::string window = buffer.substr(buf_start, ref_len);
 
             std::string forward;
@@ -248,9 +251,10 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
         }
 
         // Periodically compact the buffer to avoid unbounded growth / big memory
-        // Update buffer with new content when ref_len is done, or when half buffered data is obsoleted 
+        // Update buffer with new content when ref_len is done, or when half buffered data is obsoleted
         size_t min_compact = std::max<size_t>(ref_len, 4096);
-        if (buf_start >= min_compact || buf_start >= buffer.size() / 2) {
+        if (buf_start >= min_compact || buf_start >= buffer.size() / 2)
+        {
             buffer.erase(0, buf_start);
             buf_start = 0;
         }

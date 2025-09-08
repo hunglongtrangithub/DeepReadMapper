@@ -28,35 +28,47 @@ Vectorizer::Vectorizer(
  *          - preprocessing
  *          - inference
  * @param input Vector of string sequences to be vectorized
+ * @param verbose Whether to print detailed logs (default: false)
  * @return Vector of vectorized sequences as floating-point arrays
  */
-std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::string> &input)
+std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::string> &input, bool verbose)
 {
-
-    std::cout << "Starting vectorization of " << input.size() << " sequences..." << std::endl;
+    if (verbose) {
+        std::cout << "[Inference] Vectorizing " << input.size() << " sequences..." << std::endl;
+    }
 
     // [STEP 1] Preprocess the input sequences
-    std::cout << "Preprocessing input for vectorization..." << std::endl;
+    if (verbose) {
+        std::cout << "[Inference] Preprocessing input for vectorization..." << std::endl;
+    }
     auto start = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<uint16_t>> preprocessed_inputs = preprocessor_.preprocessBatch(input, max_len_);
+    std::vector<std::vector<uint16_t>> preprocessed_inputs = preprocessor_.preprocessBatch(input, max_len_, verbose);
     auto end = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Preprocessing completed in " << duration << " ms." << std::endl;
+    if (verbose) {
+        std::cout << "[Inference] Preprocessing completed in " << duration << " ms." << std::endl;
+    }
 
     // [STEP 2] Initialize output array
     std::vector<std::vector<float>> output(input.size(), std::vector<float>(model_out_size_));
 
     // [STEP 3] Inference in batches
-    std::cout << "Running inference..." << std::endl;
+    if (verbose) {
+        std::cout << "[Inference] Running inference..." << std::endl;
+    }
 
-    // Hide cursor and create progress bar
-    indicators::show_console_cursor(false);
+    // Progress bar only shown if verbose
     indicators::ProgressBar progressBar{
         indicators::option::BarWidth{80},
         indicators::option::PrefixText{"vectorizing"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
+
+    if (verbose) {
+        // Hide cursor and show progress bar
+        indicators::show_console_cursor(false);
+    }
 
     size_t total_sequences = input.size();
 
@@ -104,21 +116,27 @@ std::vector<std::vector<float>> Vectorizer::vectorize(const std::vector<std::str
             }
         }
 
-        // Update progress bar
-        size_t processed = std::min(start_row + batch_size_ * concurrent_batches, total_sequences);
-        size_t current_progress_percent = (processed * 100) / total_sequences;
-        progressBar.set_progress(current_progress_percent);
+        // Update progress bar only if verbose
+        if (verbose) {
+            size_t processed = std::min(start_row + batch_size_ * concurrent_batches, total_sequences);
+            size_t current_progress_percent = (processed * 100) / total_sequences;
+            progressBar.set_progress(current_progress_percent);
+        }
     }
 
     end = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Kernel completed in " << duration << " ms." << std::endl;
+    if (verbose) {
+        std::cout << "[Inference] Kernel completed in " << duration << " ms." << std::endl;
+    }
 
-    // Complete progress bar and show cursor
-    progressBar.set_progress(100);
-    indicators::show_console_cursor(true);
+    // Complete progress bar and show cursor only if verbose
+    if (verbose) {
+        progressBar.set_progress(100);
+        indicators::show_console_cursor(true);
+        std::cout << "[Inference] Vectorization completed successfully!" << std::endl;
+    }
 
-    std::cout << "Vectorization completed successfully!" << std::endl;
     return output;
 }
 

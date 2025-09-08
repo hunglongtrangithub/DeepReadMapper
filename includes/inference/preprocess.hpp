@@ -61,5 +61,5 @@ public:
     
     std::vector<uint16_t> preprocess(const std::string &seq, unsigned maxLen);
     
-    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen);
+    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen, bool verbose = true);
 };

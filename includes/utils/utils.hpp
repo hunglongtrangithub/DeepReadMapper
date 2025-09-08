@@ -16,6 +16,8 @@
 #include <variant>
 #include <unordered_map>
 #include <algorithm>
+#include <functional>
+#include <atomic>
 
 #include "cnpy.h"
 

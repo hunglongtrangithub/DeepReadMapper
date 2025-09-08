@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
     try
     {
         // Process FASTA file
-        std::vector<std::string> sequences = preprocess_fasta(input_file, ref_len);
+        auto [sequences, __] = preprocess_fasta(input_file, ref_len);
 
         if (sequences.empty())
         {
