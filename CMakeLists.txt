@@ -286,6 +286,7 @@ add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS})
 
 target_link_libraries(gen_ref
     openvino::runtime
+    OpenMP::OpenMP_CXX
     cnpy
 )
 
@@ -297,5 +298,6 @@ add_executable(calc_sw ${SW_SRCS} ${UTILS_SRCS})
 
 target_link_libraries(calc_sw
     openvino::runtime
+    OpenMP::OpenMP_CXX
     cnpy
 )

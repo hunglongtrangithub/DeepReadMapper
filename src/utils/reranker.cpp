@@ -81,30 +81,20 @@ std::pair<std::vector<std::string>, std::vector<float>> reranker(const std::vect
     return {top_seqs, top_dists};
 }
 
-// Add this new function to reranker.cpp:
 std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reranker(
-    const std::vector<std::vector<std::string>> &all_cand_seqs,
+    const std::vector<std::string> &all_cand_seqs,
+    const std::vector<size_t> &query_start_indices,
     const std::vector<std::vector<float>> &query_embeddings,
     size_t k,
     Vectorizer &vectorizer)
 {
-    // Step 1: Collect ALL candidate sequences from ALL queries
-    std::vector<std::string> all_candidates;
-    std::vector<size_t> query_start_indices;
+    // Step 1: Single vectorization call for ALL candidates
+    std::vector<std::vector<float>> all_cand_embeddings = vectorizer.vectorize(all_cand_seqs, false);
 
-    for (size_t q = 0; q < all_cand_seqs.size(); ++q)
-    {
-        query_start_indices.push_back(all_candidates.size());
-        all_candidates.insert(all_candidates.end(), all_cand_seqs[q].begin(), all_cand_seqs[q].end());
-    }
-    query_start_indices.push_back(all_candidates.size()); // End marker
-
-    // Step 2: Single vectorization call for ALL candidates
-    std::vector<std::vector<float>> all_cand_embeddings = vectorizer.vectorize(all_candidates, false);
-
-    // Step 3: Process each query's results
+    // Step 2: Process each query's results
+    //* Can be parallelized if needed
     std::vector<std::pair<std::vector<std::string>, std::vector<float>>> results;
-    results.reserve(all_cand_seqs.size());
+    results.reserve(query_embeddings.size());
 
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
@@ -113,7 +103,8 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    for (size_t q = 0; q < all_cand_seqs.size(); ++q)
+    #pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+    for (size_t q = 0; q < query_embeddings.size(); ++q)
     {
         size_t start_idx = query_start_indices[q];
         size_t end_idx = query_start_indices[q + 1];
@@ -150,16 +141,16 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
 
         for (size_t i = 0; i < actual_k; ++i)
         {
-            top_seqs.push_back(all_cand_seqs[q][indices[i]]);
+            top_seqs.push_back(all_cand_seqs[start_idx + indices[i]]);
             top_dists.push_back(l2_dists[indices[i]]);
         }
 
         results.push_back({top_seqs, top_dists});
 
         // Update progress bar
-        if (q % 100 == 0 || q == all_cand_seqs.size() - 1)
+        if (q % 100 == 0 || q == query_embeddings.size() - 1)
         {
-            size_t progress_percent = (q * 100) / all_cand_seqs.size();
+            size_t progress_percent = (q * 100) / query_embeddings.size();
             progressBar.set_progress(progress_percent);
         }
     }

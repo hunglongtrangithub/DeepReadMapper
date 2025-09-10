@@ -1,4 +1,5 @@
 #include "parse_inputs.hpp"
+#include "config.hpp"
 #include "progressbar.h"
 
 static const std::array<char, 128> comp_table = []
@@ -298,18 +299,18 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     return {result, labels};
 }
 
-// FASTQ preprocessing using traditional file I/O
-std::vector<std::string> preprocess_fastq_default(const std::string &fastq_file)
+// FASTQ file reading using traditional file I/O
+std::pair<const char *, size_t> read_fastq_default(const std::string &fastq_file, std::unique_ptr<char[]> &buffer)
 {
-    std::cout << "Processing FASTQ file: " << fastq_file << std::endl;
+    std::cout << "Reading FASTQ file: " << fastq_file << std::endl;
 
-    std::ifstream infile(fastq_file);
-    if (!infile.is_open())
+    std::ifstream infile(fastq_file, std::ios::binary);
+    if (!infile)
     {
-        throw std::runtime_error("Failed to open file: " + fastq_file);
+        throw std::runtime_error("Failed to open FASTQ file: " + fastq_file);
     }
 
-    // Get file size for progress tracking
+    // Get file size
     struct stat file_stat;
     if (stat(fastq_file.c_str(), &file_stat) != 0)
     {
@@ -317,58 +318,55 @@ std::vector<std::string> preprocess_fastq_default(const std::string &fastq_file)
     }
     size_t file_size = file_stat.st_size;
 
-    // Estimate number of sequences (rough estimate: file_size / 200 for FASTQ)
-    std::vector<std::string> sequences;
-
-    sequences.reserve(file_size / 200 + 1000);
-
     // Setup progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
         indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing FASTQ sequences"},
+        indicators::option::PrefixText{"reading FASTQ file"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    std::string line;
-    int line_number = 0;
-    size_t bytes_processed = 0;
+    // Allocate buffer and read entire file
+    buffer = std::make_unique<char[]>(file_size + 1);
+
+    // Read in chunks to show progress
+    const size_t chunk_size = 1024 * 1024; // 1MB chunks
+    size_t bytes_read = 0;
     size_t last_progress_update = 0;
 
-    while (std::getline(infile, line))
-    {
-        bytes_processed += line.size() + 1; // +1 for newline
+    progressBar.set_progress(0);
 
-        if (line_number % 4 == 1)
-        { // Sequence line (2nd line in every 4-line block)
-            sequences.emplace_back(PREFIX + line + POSTFIX);
-        }
-        ++line_number;
+    while (bytes_read < file_size)
+    {
+        size_t to_read = std::min(chunk_size, file_size - bytes_read);
+        infile.read(buffer.get() + bytes_read, to_read);
+        bytes_read += to_read;
 
         // Update progress bar
-        if (bytes_processed - last_progress_update > 1024 * 1024)
+        if (bytes_read - last_progress_update > chunk_size)
         {
-            size_t progress_percent = (bytes_processed * 100) / file_size;
-            progressBar.set_progress(progress_percent);
-            last_progress_update = bytes_processed;
+            progressBar.set_progress((bytes_read * 100) / file_size);
+            last_progress_update = bytes_read;
         }
     }
 
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
 
+    buffer[file_size] = '\0';
     infile.close();
-    std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
-    return sequences;
+
+    std::cout << "File read complete: " << file_size << " bytes" << std::endl;
+    return {buffer.get(), file_size};
 }
 
-// FASTQ preprocessing using memory mapping (Linux only)
-std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
+// FASTQ file reading using memory mapping (Linux only)
+std::pair<const char *, size_t> read_fastq_mmap(const std::string &fastq_file, int &fd)
 {
-    std::cout << "Processing FASTQ file: " << fastq_file << " (using mmap)" << std::endl;
+    std::cout << "Reading FASTQ file: " << fastq_file << " (using mmap)" << std::endl;
 
     // Open file
-    int fd = open(fastq_file.c_str(), O_RDONLY);
+    fd = open(fastq_file.c_str(), O_RDONLY);
     if (fd == -1)
     {
         throw std::runtime_error("Failed to open FASTQ file: " + fastq_file);
@@ -382,6 +380,16 @@ std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
         throw std::runtime_error("Failed to get file size: " + fastq_file);
     }
 
+    // Setup progress bar for mapping
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"mapping FASTQ file (mmap)"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    progressBar.set_progress(0);
+
     // Memory map the file
     const char *data = static_cast<const char *>(
         mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -389,23 +397,46 @@ std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
     if (data == MAP_FAILED)
     {
         close(fd);
+        indicators::show_console_cursor(true);
         throw std::runtime_error("Failed to mmap file: " + fastq_file);
     }
 
-    // Estimate number of sequences
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "File mapped complete: " << sb.st_size << " bytes" << std::endl;
+    return {data, static_cast<size_t>(sb.st_size)};
+}
+
+// Wrapper function for FASTQ file reading
+std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::unique_ptr<char[]> &buffer, int &fd)
+{
+#ifdef __linux__
+    return read_fastq_mmap(fastq_file, fd);
+#else
+    return read_fastq_default(fastq_file, buffer);
+#endif
+}
+
+// FASTQ data processing
+std::vector<std::string> format_fastq(const char *data, size_t data_size)
+{
+    std::cout << "Processing FASTQ data..." << std::endl;
+
+    // Estimate number of sequences (rough estimate: file_size / 150 for FASTQ)
     std::vector<std::string> sequences;
-    sequences.reserve(sb.st_size / 200 + 1000);
+    sequences.reserve(data_size / 150);
 
     // Setup progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
         indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing FASTQ sequences (mmap)"},
+        indicators::option::PrefixText{"processing FASTQ sequences"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
     const char *current = data;
-    const char *end = data + sb.st_size;
+    const char *end = data + data_size;
     int line_number = 0;
     size_t bytes_processed = 0;
     size_t last_progress_update = 0;
@@ -439,7 +470,7 @@ std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
         bytes_processed = current - data;
         if (bytes_processed - last_progress_update > 1024 * 1024)
         {
-            progressBar.set_progress((bytes_processed * 100) / sb.st_size);
+            progressBar.set_progress((bytes_processed * 100) / data_size);
             last_progress_update = bytes_processed;
         }
     }
@@ -447,20 +478,150 @@ std::vector<std::string> preprocess_fastq_mmap(const std::string &fastq_file)
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
 
-    // Cleanup
-    munmap(const_cast<char *>(data), sb.st_size);
-    close(fd);
-
     std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
     return sequences;
 }
 
-// Wrapper function for FASTQ preprocessing
+// FASTQ data processing using OpenMP for parallel processing
+std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
+{
+    std::cout << "Processing FASTQ data (multi-threaded)..." << std::endl;
+
+    // First pass: count lines and find sequence line positions
+    std::vector<std::pair<const char *, size_t>> sequence_positions;
+    const char *current = data;
+    const char *end = data + data_size;
+    int line_number = 0;
+
+    // Setup progress bar for parsing
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar parseBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"parsing FASTQ structure"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    size_t bytes_processed = 0;
+    size_t last_progress_update = 0;
+
+    while (current < end)
+    {
+        const char *line_start = current;
+
+        // Find end of line
+        while (current < end && *current != '\n' && *current != '\r')
+        {
+            current++;
+        }
+
+        // Store sequence line positions (2nd line in every 4-line block)
+        if (line_number % 4 == 1 && current > line_start)
+        {
+            sequence_positions.emplace_back(line_start, current - line_start);
+        }
+
+        // Skip line endings
+        while (current < end && (*current == '\n' || *current == '\r'))
+        {
+            current++;
+        }
+
+        line_number++;
+
+        // Update progress bar
+        bytes_processed = current - data;
+        if (bytes_processed - last_progress_update > 10 * 1024 * 1024) // Every 10MB
+        {
+            parseBar.set_progress((bytes_processed * 100) / data_size);
+            last_progress_update = bytes_processed;
+        }
+    }
+
+    parseBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "Found " << sequence_positions.size() << " sequences" << std::endl;
+
+    // Estimate and reserve space
+    std::vector<std::string> sequences(sequence_positions.size());
+
+    // Setup progress bar for processing
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar processBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"processing FASTQ sequences (parallel)"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    size_t sequences_processed = 0;
+    size_t last_seq_update = 0;
+
+// Parallel processing of sequences
+#pragma omp parallel for num_threads(Config::Search::NUM_THREADS) schedule(dynamic)
+
+    for (size_t i = 0; i < sequence_positions.size(); ++i)
+    {
+        const auto &[line_start, line_length] = sequence_positions[i];
+        std::string line(line_start, line_length);
+
+        // Reserve space and construct the sequence
+        std::string result;
+        result.reserve(line_length + 2); // +2 for PREFIX and POSTFIX
+        result.append(PREFIX).append(line).append(POSTFIX);
+
+        sequences[i] = std::move(result);
+
+// Update progress (thread-safe)
+#pragma omp atomic
+        sequences_processed++;
+
+        // Update progress bar (only from one thread to avoid conflicts)
+        if (omp_get_thread_num() == 0 &&
+            sequences_processed - last_seq_update > 10000)
+        {
+            processBar.set_progress((sequences_processed * 100) / sequence_positions.size());
+            last_seq_update = sequences_processed;
+        }
+    }
+
+    processBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "Successfully processed " << sequences.size() << " sequences (parallel)" << std::endl;
+    return sequences;
+}
+
+// Combined wrapper function that handles both I/O and processing
 std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
 {
+    std::unique_ptr<char[]> buffer;
+    int fd = -1;
+
+    // Step 1: Read file
+    auto start_time = std::chrono::high_resolution_clock::now();
+    auto [data, data_size] = read_fastq(fastq_file, buffer, fd);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[FASTQ] File read time: " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Process data
+    // auto sequences = format_fastq(data, data_size);
+
+    //* Format with multi-threads
+    start_time = std::chrono::high_resolution_clock::now();
+    auto sequences = format_fastq_mp(data, data_size);
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[FASTQ] Formatting time (multi-threaded): " << duration.count() << " ms" << std::endl;
+
+    // Step 3: Cleanup
 #ifdef __linux__
-    return preprocess_fastq_mmap(fastq_file);
-#else
-    return preprocess_fastq_default(fastq_file);
+    if (fd != -1)
+    {
+        munmap(const_cast<char *>(data), data_size);
+        close(fd);
+    }
 #endif
+
+    return sequences;
 }

@@ -1,13 +1,8 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <fstream>
-#include <unordered_map>
-#include <stdexcept>
 #include <cctype>
 #include <utility>
-#include <filesystem> // C++17
+#include <omp.h>
 #include "utils.hpp"
 
 #define PREFIX "<"
@@ -59,6 +54,37 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
 /// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
 std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+
+/// @brief Read FASTQ file using traditional file I/O
+/// @param fastq_file Path to the FASTQ file
+/// @param buffer Buffer to store file data (for default I/O)
+/// @return Pair of data pointer and size
+std::pair<const char *, size_t> read_fastq_default(const std::string &fastq_file, std::unique_ptr<char[]> &buffer);
+
+/// @brief Read FASTQ file using memory mapping (Linux only)
+/// @param fastq_file Path to the FASTQ file
+/// @param fd File descriptor (for cleanup)
+/// @return Pair of data pointer and size
+std::pair<const char *, size_t> read_fastq_mmap(const std::string &fastq_file, int &fd);
+
+/// @brief Wrapper function for FASTQ file reading
+/// @param fastq_file Path to the FASTQ file
+/// @param buffer Buffer to store file data (for default I/O)
+/// @param fd File descriptor (for mmap cleanup)
+/// @return Pair of data pointer and size
+std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::unique_ptr<char[]> &buffer, int &fd);
+
+/// @brief Process FASTQ data (separated from I/O)
+/// @param data Pointer to file data
+/// @param data_size Size of data
+/// @return Vector of formatted sequences with PREFIX and POSTFIX tags
+std::vector<std::string> format_fastq(const char *data, size_t data_size);
+
+/// @brief Process FASTQ data using OpenMP for parallel processing (separated from I/O)
+/// @param data Pointer to file data
+/// @param data_size Size of data
+/// @return Vector of formatted sequences with PREFIX and POSTFIX tags
+std::vector<std::string> format_fastq_mp(const char *data, size_t data_size);
 
 /// @brief Wrapper function for FASTQ preprocessing that chooses optimal method
 /// @param fastq_file Path to the FASTQ file

@@ -107,6 +107,7 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
     }
 
     // Step 3: Fetch sequences
+    //* Can be parallelized if needed
     results.reserve(unique_positions.size());
     for (size_t pos : unique_positions)
     {
@@ -169,32 +170,67 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process(
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance (batched)" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: size_t" << std::endl;
-    
+
     size_t total_queries = query_embeddings.size();
-    
-    // Step 1: Collect all candidate sequences for all queries
-    std::vector<std::vector<std::string>> all_cand_seqs(total_queries);
-    for (size_t i = 0; i < total_queries; ++i) {
-        std::vector<size_t> query_neighbors(neighbors[i].begin(),
-                                           neighbors[i].begin() + std::min(size_t(5), neighbors[i].size()));
-        all_cand_seqs[i] = find_sequences(ref_seqs, query_neighbors, ref_len, stride);
+
+    // Step 1: Flatten all neighbor indices into a contiguous array and build mapping to track original quer-cand pairs
+    std::cout << "[POST-PROCESS] Flattening candidates for " << total_queries << " queries." << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<size_t> all_neighbor_indices;
+    std::vector<size_t> query_start_indices;
+
+    for (size_t i = 0; i < total_queries; ++i)
+    {
+        query_start_indices.push_back(all_neighbor_indices.size());
+
+        size_t num_cands_per_query = std::min(size_t(5), neighbors[i].size());
+
+        all_neighbor_indices.insert(all_neighbor_indices.end(),
+                                    neighbors[i].begin(),
+                                    neighbors[i].begin() + num_cands_per_query);
     }
-    
-    // Step 2: Batch rerank all candidates
-    auto batch_results = batch_reranker(all_cand_seqs, query_embeddings, k, vectorizer);
-    
-    // Step 3: Flatten results
+    query_start_indices.push_back(all_neighbor_indices.size()); // End marker
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Flattening completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Single call to find_sequences for ALL candidates
+    std::cout << "[POST-PROCESS] Fetching all candidate sequences." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+    std::vector<std::string> all_cand_seqs = find_sequences(ref_seqs, all_neighbor_indices, ref_len, stride);
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Fetching completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 3: Pass flattened data to a modified batch_reranker
+    std::cout << "[POST-PROCESS] Running batched reranker for all queries." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+    auto batch_results = batch_reranker(all_cand_seqs, query_start_indices, query_embeddings, k, vectorizer);
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Reranking completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 4: Flatten results in 2 vectors sequences and scores
+    std::cout << "[POST-PROCESS] Format final results into 2 flat arrays (sequences and scores)." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
     std::vector<std::string> final_seqs;
     std::vector<float> final_scores;
     final_seqs.reserve(total_queries * k);
     final_scores.reserve(total_queries * k);
-    
-    for (const auto &[seqs, scores] : batch_results) {
+
+    for (const auto &[seqs, scores] : batch_results)
+    {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());
-
     }
-    
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Result formatting completed in " << duration.count() << " ms" << std::endl;
+
     return {final_seqs, final_scores};
 }
 

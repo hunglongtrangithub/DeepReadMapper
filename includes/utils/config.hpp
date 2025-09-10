@@ -21,15 +21,15 @@ namespace Config
 
     namespace Build
     {
-        constexpr const int EFC = 128;              // Exploration factor for HNSW
-        constexpr const int GPH_DEG = 64;           // Graph degree (or M) in HNSW
+        constexpr const int EFC = 128;    // Exploration factor for HNSW
+        constexpr const int GPH_DEG = 64; // Graph degree (or M) in HNSW
 
-        constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
+        constexpr const int NUM_THREADS = 128; // Number of threads for parallel search
 
         constexpr const double SAMPLE_RATE = 0.2; // Fraction of data to use for training PQ codebooks
 
         //! Below are deprecated and only use for testing purpose
-        constexpr const int DIM = 128;              // Vector dimension. Keep it const for testing. 
+        constexpr const int DIM = 128;              // Vector dimension. Keep it const for testing.
         constexpr const int MAX_ELEMENTS = 1000000; // Max number of elements in the index, keep it const for testing.
     }
 
@@ -44,7 +44,7 @@ namespace Config
 
     namespace PostProcess
     {
-        constexpr const int NUM_THREADS = 32; // Number of threads for parallel post-processing (Smith-Waterman) and reranking
+        constexpr const int NUM_THREADS = 32;  // Number of threads for parallel post-processing and reranking
         constexpr const int BATCH_SIZE = 1000; // Number of queries per batch during reranking (deprecated)
     }
 

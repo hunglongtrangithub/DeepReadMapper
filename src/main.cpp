@@ -87,6 +87,9 @@ int main(int argc, char *argv[])
             return 1;
         }
 
+        auto query_end_time = std::chrono::high_resolution_clock::now();
+        auto query_duration = std::chrono::duration_cast<std::chrono::milliseconds>(query_end_time - start_time);
+
         // analyze_input(query_sequences);
 
         auto [ref_sequences, _] = read_file(ref_seqs_file, std::get<size_t>(config["ref_len"]), std::get<size_t>(config["stride"]));
@@ -94,7 +97,9 @@ int main(int argc, char *argv[])
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Finished data loading" << std::endl;
-        std::cout << "[MAIN] Data loaded time: " << duration.count() << " ms" << std::endl
+        std::cout << "[MAIN] Query loading & formatting time: " << query_duration.count() << " ms" << std::endl;
+        std::cout << "[MAIN] Reference loading & formatting time: " << (duration - query_duration).count() << " ms" << std::endl;
+        std::cout << "[MAIN] Total Data loading time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
         // Load search index
@@ -159,6 +164,9 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
+        // Free-up search memory
+        delete alg_hnsw;
+
         std::cout << "[MAIN] POST-PROCESSING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
@@ -205,9 +213,6 @@ int main(int argc, char *argv[])
                   << std::endl;
 
         std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
-
-        // Clean up
-        delete alg_hnsw;
     }
     catch (const std::exception &e)
     {
