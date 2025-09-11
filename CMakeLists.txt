@@ -130,6 +130,7 @@ add_executable(inference ${TEST_INFERENCE_SRCS} ${INFERENCE_SRCS} ${UTILS_SRCS})
 
 target_link_libraries(inference
     openvino::runtime
+    cnpy
 )
 
 # DEFINE executable for testing HNSW from Minh's code
