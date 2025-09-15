@@ -3,10 +3,20 @@
 #include <cctype>
 #include <utility>
 #include <omp.h>
+#include <immintrin.h>
 #include "utils.hpp"
 
 #define PREFIX "<"
 #define POSTFIX ">"
+
+/// @brief Descriptor for a genome window (for SIMD processing)
+struct WindowDescriptor {
+    uint32_t genome_pos;  // position in genome
+    uint8_t is_reverse;   // 0=forward, 1=reverse
+    uint32_t result_idx;  // index in final result vectors
+};
+
+
 
 /// @brief Estimate the number of tokens that will be generated from a FASTA file
 /// @param fasta_path Path to the FASTA file
@@ -47,6 +57,15 @@ std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::u
 /// @param stride Length of non-overlap part between 2 windows
 /// @return Vector of formatted sequences
 std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+
+/// @brief Process FASTA data using OpenMP for parallel processing (separated from I/O)
+/// @param data Pointer to file data
+/// @param data_size Size of data
+/// @param fasta_file Original filename (for estimation)
+/// @param ref_len Length of each reference sequence to cut into (doesn't include PREFIX/POSTFIX)
+/// @param stride Length of non-overlap part between 2 windows
+/// @return Vector of formatted sequences
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
 
 /// @brief Combined FASTA formatting with I/O handling
 /// @param fasta_file Path to the FASTA file

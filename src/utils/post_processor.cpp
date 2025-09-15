@@ -69,8 +69,24 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
 {
     std::vector<std::string> results;
 
-    if (ids.empty())
+    if (ids.empty()) {
+        std::cout << "[DEBUG] find_sequences: Empty ids vector" << std::endl;
         return results;
+    }
+
+    // Debug initial state
+    std::cout << "[DEBUG] find_sequences called with:" << std::endl;
+    std::cout << "[DEBUG]   ref_seqs.size() = " << ref_seqs.size() << std::endl;
+    std::cout << "[DEBUG]   ids.size() = " << ids.size() << std::endl;
+    std::cout << "[DEBUG]   ref_len = " << ref_len << std::endl;
+    std::cout << "[DEBUG]   stride = " << stride << std::endl;
+
+    // Show first few IDs
+    std::cout << "[DEBUG] First 10 sparse_ids: ";
+    for (size_t i = 0; i < std::min(size_t(10), ids.size()); ++i) {
+        std::cout << ids[i] << " ";
+    }
+    std::cout << std::endl;
 
     // Step 1: Sort candidates and merge overlapping ranges
     std::vector<size_t> sorted_ids = ids;
@@ -78,45 +94,130 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
 
     std::vector<std::pair<size_t, size_t>> ranges; // [start, end) pairs
 
-    for (size_t base_id : sorted_ids)
+    size_t skipped_ranges = 0;
+    size_t valid_ranges = 0;
+    size_t out_of_bounds = 0;
+
+    for (size_t i = 0; i < sorted_ids.size(); ++i)
     {
+        size_t base_id = sorted_ids[i];
+        
+        // Debug first few iterations
+        if (i < 5) {
+            std::cout << "[DEBUG] Processing base_id[" << i << "] = " << base_id << std::endl;
+        }
+
         // Normalize base_id, shift from 0, 1, 2 to 0, stride, 2*stride, ...
-        base_id *= stride;
-        size_t start = (base_id >= stride - 1) ? base_id - stride + 1 : 0;
-        size_t end = std::min(base_id + stride, ref_seqs.size());
+        size_t actual_position = base_id * stride;
+        
+        // Check if out of bounds
+        if (actual_position >= ref_seqs.size()) {
+            out_of_bounds++;
+            if (i < 5) {
+                std::cout << "[DEBUG]   actual_position " << actual_position << " >= ref_seqs.size() " << ref_seqs.size() << " (OUT OF BOUNDS)" << std::endl;
+            }
+            continue;
+        }
+
+        size_t start = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
+        size_t end = std::min(actual_position + stride, ref_seqs.size());
+
+        // Debug range calculation
+        if (i < 5) {
+            std::cout << "[DEBUG]   actual_position = " << actual_position << std::endl;
+            std::cout << "[DEBUG]   start = " << start << ", end = " << end << std::endl;
+        }
+
+        // Check if range is valid
+        if (start >= end) {
+            skipped_ranges++;
+            if (i < 5) {
+                std::cout << "[DEBUG]   INVALID RANGE: start >= end" << std::endl;
+            }
+            continue;
+        }
+
+        valid_ranges++;
 
         // Merge with previous range if overlapping
         if (!ranges.empty() && start <= ranges.back().second)
         {
+            size_t old_end = ranges.back().second;
             ranges.back().second = std::max(ranges.back().second, end);
+            if (i < 5) {
+                std::cout << "[DEBUG]   MERGED with previous range: [" << ranges.back().first << ", " << old_end << ") -> [" << ranges.back().first << ", " << ranges.back().second << ")" << std::endl;
+            }
         }
         else
         {
             ranges.emplace_back(start, end);
+            if (i < 5) {
+                std::cout << "[DEBUG]   NEW range: [" << start << ", " << end << ")" << std::endl;
+            }
         }
     }
 
+    std::cout << "[DEBUG] Range processing summary:" << std::endl;
+    std::cout << "[DEBUG]   Valid ranges: " << valid_ranges << std::endl;
+    std::cout << "[DEBUG]   Skipped ranges: " << skipped_ranges << std::endl;
+    std::cout << "[DEBUG]   Out of bounds: " << out_of_bounds << std::endl;
+    std::cout << "[DEBUG]   Final merged ranges: " << ranges.size() << std::endl;
+
     // Step 2: Collect all unique positions from merged ranges
     std::vector<size_t> unique_positions;
-    for (const auto &[start, end] : ranges)
+    size_t total_positions = 0;
+
+    for (size_t i = 0; i < ranges.size(); ++i)
     {
+        const auto &[start, end] = ranges[i];
+        size_t range_size = end - start;
+        total_positions += range_size;
+
+        if (i < 3) { // Debug first few ranges
+            std::cout << "[DEBUG] Range[" << i << "]: [" << start << ", " << end << ") size=" << range_size << std::endl;
+        }
+
         for (size_t pos = start; pos < end; ++pos)
         {
             unique_positions.push_back(pos);
         }
     }
 
+    std::cout << "[DEBUG] Total unique positions to fetch: " << total_positions << std::endl;
+    std::cout << "[DEBUG] unique_positions.size(): " << unique_positions.size() << std::endl;
+
     // Step 3: Fetch sequences
-    //* Can be parallelized if needed
     results.reserve(unique_positions.size());
-    for (size_t pos : unique_positions)
+    size_t fetch_errors = 0;
+
+    for (size_t i = 0; i < unique_positions.size(); ++i)
     {
-        results.push_back(find_sequence(ref_seqs, pos, ref_len));
+        size_t pos = unique_positions[i];
+        
+        try {
+            std::string seq = find_sequence(ref_seqs, pos, ref_len);
+            results.push_back(seq);
+            
+            // Debug first few fetches
+            if (i < 3) {
+                std::cout << "[DEBUG] Fetched seq[" << i << "] from pos " << pos << ": length=" << seq.length() << std::endl;
+            }
+        }
+        catch (const std::exception& e) {
+            fetch_errors++;
+            if (fetch_errors <= 5) { // Only show first few errors
+                std::cout << "[DEBUG] ERROR fetching pos " << pos << ": " << e.what() << std::endl;
+            }
+        }
     }
+
+    std::cout << "[DEBUG] Fetch summary:" << std::endl;
+    std::cout << "[DEBUG]   Successful fetches: " << results.size() << std::endl;
+    std::cout << "[DEBUG]   Fetch errors: " << fetch_errors << std::endl;
+    std::cout << "[DEBUG] Final results.size(): " << results.size() << std::endl;
 
     return results;
 }
-
 // Smith-Waterman version (size_t neighbors)
 std::pair<std::vector<std::string>, std::vector<int>> post_process(
     const std::vector<std::vector<size_t>> &neighbors,
@@ -195,6 +296,8 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process(
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Flattening completed in " << duration.count() << " ms" << std::endl;
+
+    std::cout << "[DEBUG] Total neighbor indices collected: " << all_neighbor_indices.size() << std::endl;
 
     // Step 2: Single call to find_sequences for ALL candidates
     std::cout << "[POST-PROCESS] Fetching all candidate sequences." << std::endl;

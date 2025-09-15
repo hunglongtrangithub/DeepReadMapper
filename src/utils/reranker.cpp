@@ -91,10 +91,14 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
     // Step 1: Single vectorization call for ALL candidates
     std::vector<std::vector<float>> all_cand_embeddings = vectorizer.vectorize(all_cand_seqs, false);
 
-    // Step 2: Process each query's results
-    //* Can be parallelized if needed
-    std::vector<std::pair<std::vector<std::string>, std::vector<float>>> results;
-    results.reserve(query_embeddings.size());
+    std::cout << "[BATCH-RERANKER] Finished vectorizing " << all_cand_seqs.size() << " candidate sequences" << std::endl;
+
+    // Step 2: Pre-allocate results vector
+    std::vector<std::pair<std::vector<std::string>, std::vector<float>>> results(query_embeddings.size());
+
+    // Progress tracking variables (thread-safe)
+    std::atomic<size_t> completed_queries{0};
+    const size_t total_queries = query_embeddings.size();
 
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
@@ -103,7 +107,7 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    #pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
     for (size_t q = 0; q < query_embeddings.size(); ++q)
     {
         size_t start_idx = query_start_indices[q];
@@ -112,7 +116,18 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
 
         if (num_cands == 0)
         {
-            results.push_back({{}, {}});
+            results[q] = {{}, {}};
+
+            // Update progress atomically
+            size_t current_completed = completed_queries.fetch_add(1) + 1;
+            if (current_completed % 1000 == 0 || current_completed == total_queries)
+            {
+#pragma omp critical
+                {
+                    size_t progress_percent = (current_completed * 100) / total_queries;
+                    progressBar.set_progress(progress_percent);
+                }
+            }
             continue;
         }
 
@@ -145,13 +160,17 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
             top_dists.push_back(l2_dists[indices[i]]);
         }
 
-        results.push_back({top_seqs, top_dists});
+        results[q] = {top_seqs, top_dists};
 
-        // Update progress bar
-        if (q % 100 == 0 || q == query_embeddings.size() - 1)
+        // Update progress atomically
+        size_t current_completed = completed_queries.fetch_add(1) + 1;
+        if (current_completed % 1000 == 0 || current_completed == total_queries)
         {
-            size_t progress_percent = (q * 100) / query_embeddings.size();
-            progressBar.set_progress(progress_percent);
+#pragma omp critical
+            {
+                size_t progress_percent = (current_completed * 100) / total_queries;
+                progressBar.set_progress(progress_percent);
+            }
         }
     }
 

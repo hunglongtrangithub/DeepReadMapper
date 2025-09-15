@@ -92,7 +92,8 @@ int main(int argc, char *argv[])
 
         // analyze_input(query_sequences);
 
-        auto [ref_sequences, _] = read_file(ref_seqs_file, std::get<size_t>(config["ref_len"]), std::get<size_t>(config["stride"]));
+        // Load reference sequences with stride=1 to get full sequences for post-processing
+        auto [ref_sequences, _] = read_file(ref_seqs_file, std::get<size_t>(config["ref_len"]), 1);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -163,6 +164,12 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] HNSW Search completed" << std::endl;
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
+
+        std::cout << "[DEBUG] First few queries neighbor counts: ";
+        for (size_t i = 0; i < std::min(size_t(5), neighbors.size()); ++i) {
+            std::cout << neighbors[i].size() << " ";
+        }
+        std::cout << std::endl;
 
         // Free-up search memory
         delete alg_hnsw;
