@@ -11,12 +11,12 @@ int main(int argc, char *argv[])
 {
     if (argc < 4 || argc > 8)
     {
-        std::cerr << "Usage: " << argv[0] << " <index_prefix> <quer_seqs.fastq> <ref_seqs.fasta> [EF] [K] [output_dir] [use_npy]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <index_prefix> <quer_seqs.fastq> <ref_seqs.fasta> [EF] [K] [output_dir] [use_dynamic]" << std::endl;
         std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
         std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
 
         std::cerr << "  - output_dir: Optional output directory (default: current directory)" << std::endl;
-        std::cerr << "  - use_npy: Optional flag to save results in .npy format (default: false)" << std::endl;
+        std::cerr << "  - use_dynamic: Optional flag to load reference sequences dynamically (1) or statically (0). Default: 0" << std::endl;
         return 1;
     }
 
@@ -42,6 +42,9 @@ int main(int argc, char *argv[])
         }
         std::unordered_map<std::string, ConfigValue> config = load_config(config_file);
 
+        size_t ref_len = std::get<size_t>(config["ref_len"]);
+        size_t stride = std::get<size_t>(config["stride"]);
+
         const std::string query_seqs_file = argv[2];
         const std::string ref_seqs_file = argv[3];
 
@@ -51,12 +54,10 @@ int main(int argc, char *argv[])
 
         // Optional output file names with defaults
         const std::string output_dir = (argc >= 7) ? argv[6] : ".";
+        const std::string sam_file = output_dir + "/results.sam";
 
-        const bool use_npy = (argc >= 8) ? std::string(argv[7]) == "true" : false;
-
-        // Craft full output paths
-        const std::string indices_file = output_dir + (use_npy ? "/indices.npy" : "/indices.bin");
-        const std::string distances_file = output_dir + (use_npy ? "/distances.npy" : "/distances.bin");
+        //* Suggest: Use dynamic when ref_len is large (e.g. 10,000) to save memory
+        const bool use_dynamic = (argc >= 8) ? (std::stoi(argv[7]) != 0) : false;
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -71,8 +72,6 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Batch size: " << batch_size << std::endl;
         std::cout << "[MAIN] Max sequence length: " << max_len << std::endl;
         std::cout << "[MAIN] Model output size: " << model_out_size << std::endl;
-        std::cout << "[MAIN] Indices output: " << indices_file << std::endl;
-        std::cout << "[MAIN] Distances output: " << distances_file << std::endl;
 
         // Read sequences from file
         std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
@@ -93,7 +92,19 @@ int main(int argc, char *argv[])
         // analyze_input(query_sequences);
 
         // Load reference sequences with stride=1 to get full sequences for post-processing
-        auto [ref_sequences, _] = read_file(ref_seqs_file, std::get<size_t>(config["ref_len"]), 1);
+
+        std::string ref_genome = "";
+        std::vector<std::string> ref_sequences = {};
+        if (use_dynamic)
+        {
+            std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
+            ref_sequences = read_file(ref_seqs_file, ref_len, 1).first;
+        }
+        else
+        {
+            std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
+            ref_genome = extract_FASTA_sequence(ref_seqs_file);
+        }
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -165,31 +176,31 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        std::cout << "[DEBUG] First few queries neighbor counts: ";
-        for (size_t i = 0; i < std::min(size_t(5), neighbors.size()); ++i) {
-            std::cout << neighbors[i].size() << " ";
-        }
-        std::cout << std::endl;
-
         // Free-up search memory
         delete alg_hnsw;
 
         std::cout << "[MAIN] POST-PROCESSING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
-
-        size_t ref_len = std::get<size_t>(config["ref_len"]);
-        size_t stride = std::get<size_t>(config["stride"]);
-
+        
+        // Declare variables outside the if-else blocks
+        std::vector<std::string> final_seqs;
+        std::vector<float> final_dists;
+        
         //* Smith-Waterman reranking
-        // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k);
-
+        // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k);
+        
         //* L2 distance reranking
-        auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer);
+        if (use_dynamic) {
+            std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer);
+        } else {
+            std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer);
+        }
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[MAIN] Post-processing completed" << std::endl;
-        std::cout << "[MAIN] Post-processing time: " << duration.count() << " ms" << std::endl << std::endl;
+        std::cout << "[MAIN] Post-processing time: " << duration.count() << " ms" << std::endl
+                  << std::endl;
 
         // Print first 5 cands of first 3 queries for verification
         for (size_t i = 0; i < std::min(size_t(3), query_sequences.size()); ++i)
@@ -203,15 +214,15 @@ int main(int argc, char *argv[])
         }
 
         // Save results to disk
-        // std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
-        // start_time = std::chrono::high_resolution_clock::now();
+        //! This is deprecated
+        // TODO: Replace from bin/npy output to SAM format
+        //  std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+        //  start_time = std::chrono::high_resolution_clock::now();
 
         // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
 
         // end_time = std::chrono::high_resolution_clock::now();
         // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-
-        // std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
         // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();

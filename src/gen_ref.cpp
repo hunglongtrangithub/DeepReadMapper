@@ -55,7 +55,8 @@ int main(int argc, char *argv[])
     try
     {
         // Process FASTA file
-        auto [sequences, __] = preprocess_fasta(input_file, ref_len);
+        size_t stride = 1;
+        auto [sequences, __] = preprocess_fasta(input_file, ref_len, stride);
 
         if (sequences.empty())
         {

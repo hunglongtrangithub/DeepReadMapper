@@ -171,10 +171,58 @@ std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::u
 #endif
 }
 
+std::string extract_FASTA_sequence(const std::string &fasta_file)
+{
+    // Find end of first line (header)
+
+    std::unique_ptr<char[]> buffer;
+    int fd = -1;
+
+    // Step 1: Read file
+    auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
+
+    // Step 2: Extract sequence
+    const char *seq_start = data;
+    while (seq_start < data + data_size && *seq_start != '\n')
+    {
+        seq_start++;
+    }
+    if (seq_start < data + data_size)
+        seq_start++; // Skip newline
+
+    std::string genome_sequence;
+    genome_sequence.reserve(data_size); // Overestimate is fine
+
+    // Extract clean sequence
+    for (const char *ptr = seq_start; ptr < data + data_size; ++ptr)
+    {
+        char c = *ptr;
+        if (std::isspace(c))
+            continue;
+
+        c = std::toupper(static_cast<unsigned char>(c));
+        if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N')
+        {
+            genome_sequence.push_back(c);
+        }
+    }
+
+    // Step 3: Cleanup
+#ifdef __linux__
+    if (fd != -1)
+    {
+        munmap(const_cast<char *>(data), data_size);
+        close(fd);
+    }
+#endif
+
+    return genome_sequence;
+}
+
 // Single-threaded FASTA data processing
 std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
 {
-    std::cout << "Processing FASTA data..." << std::endl;
+    std::cout << "[FASTA] Processing FASTA data..." << std::endl;
 
     // Find end of first line (header)
     const char *seq_start = data;
@@ -195,8 +243,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
     result.reserve(estimated_size);
     labels.reserve(estimated_size);
 
-    std::cout << "Estimated number of sequences: " << estimated_size << std::endl;
-    std::cout << "Estimated RAM usage: " << std::fixed << std::setprecision(2) << mem_usage << " MB" << std::endl;
+    std::cout << "[FASTA] Estimated number of sequences: " << estimated_size << std::endl;
+    std::cout << "[FASTA] Estimated RAM usage: " << std::fixed << std::setprecision(2) << mem_usage << " MB" << std::endl;
 
     std::string buffer;
     buffer.reserve(ref_len + std::max<int>(1024, stride));
@@ -271,101 +319,119 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
 
-    std::cout << "Successfully processed " << result.size() << " sequences" << std::endl;
+    std::cout << "[FASTA] Successfully processed " << result.size() << " sequences" << std::endl;
     return {result, labels};
 }
 
 // SIMD-accelerated reverse complement for chunks of 32 bytes
-void reverse_complement_simd(const char* src, char* dst, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
+void reverse_complement_simd(const char *src, char *dst, size_t len)
+{
+    for (size_t i = 0; i < len; ++i)
+    {
         dst[i] = comp_table[static_cast<unsigned char>(src[len - 1 - i])];
     }
 }
 
 // Thread-local window processor using descriptors
 void process_window_batch_simd(
-    const char* genome_data,
-    const WindowDescriptor* descriptors,
+    const char *genome_data,
+    const WindowDescriptor *descriptors,
     size_t batch_size,
     size_t ref_len,
-    const char* prefix_ptr,
-    const char* postfix_ptr,
+    const char *prefix_ptr,
+    const char *postfix_ptr,
     size_t prefix_len,
     size_t postfix_len,
-    std::vector<std::string>& result,
-    std::vector<size_t>& labels
-) {
+    std::vector<std::string> &result,
+    std::vector<size_t> &labels)
+{
     const size_t out_len = prefix_len + ref_len + postfix_len;
-    
-    for (size_t i = 0; i < batch_size; ++i) {
-        const WindowDescriptor& desc = descriptors[i];
-        const char* src = genome_data + desc.genome_pos;
-        
+
+    for (size_t i = 0; i < batch_size; ++i)
+    {
+        const WindowDescriptor &desc = descriptors[i];
+        const char *src = genome_data + desc.genome_pos;
+
         // Pre-allocate result string
         std::string window_str(out_len, '\0');
-        char* dst = window_str.data();
-        
+        char *dst = window_str.data();
+
         // Copy prefix
-        if (prefix_len) std::memcpy(dst, prefix_ptr, prefix_len);
-        
-        if (desc.is_reverse == 0) {
+        if (prefix_len)
+            std::memcpy(dst, prefix_ptr, prefix_len);
+
+        if (desc.is_reverse == 0)
+        {
             // Forward
             std::memcpy(dst + prefix_len, src, ref_len);
-        } else {
+        }
+        else
+        {
             // Reverse complement
             reverse_complement_simd(src, dst + prefix_len, ref_len);
         }
-        
+
         // Copy postfix
-        if (postfix_len) std::memcpy(dst + prefix_len + ref_len, postfix_ptr, postfix_len);
-        
+        if (postfix_len)
+            std::memcpy(dst + prefix_len + ref_len, postfix_ptr, postfix_len);
+
         // Store results
         result[desc.result_idx] = std::move(window_str);
         labels[desc.result_idx] = (static_cast<size_t>(desc.genome_pos) << 1) | desc.is_reverse;
     }
 }
 
-std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char* data, size_t data_size, const std::string& fasta_file, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
 {
     std::cout << "[FASTA] Start formatting data..." << std::endl;
 
     // Step 1: Extract genome sequence (single-threaded)
-    const char* seq_start = data;
-    while (seq_start < data + data_size && *seq_start != '\n') seq_start++;
-    if (seq_start < data + data_size) seq_start++;
+    const char *seq_start = data;
+    while (seq_start < data + data_size && *seq_start != '\n')
+        seq_start++;
+    if (seq_start < data + data_size)
+        seq_start++;
 
     std::string genome_sequence;
     genome_sequence.reserve(data_size);
-    for (const char* ptr = seq_start; ptr < data + data_size; ++ptr) {
+    for (const char *ptr = seq_start; ptr < data + data_size; ++ptr)
+    {
         char c = *ptr;
-        if (std::isspace(c)) continue;
+        if (std::isspace(c))
+            continue;
         c = std::toupper(static_cast<unsigned char>(c));
-        if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N') genome_sequence.push_back(c);
+        if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N')
+            genome_sequence.push_back(c);
     }
 
     const size_t L = genome_sequence.size();
     std::cout << "[FASTA] Full sequence length: " << L << " bases" << std::endl;
-    if (L < ref_len) return {{}, {}};
+    if (L < ref_len)
+        return {{}, {}};
 
     const size_t num_windows = (L - ref_len) / stride + 1;
     const size_t total_sequences = num_windows * 2;
 
-    // Step 2: Create descriptor array instead of materializing strings
+    // Step 2: Create descriptor array
     std::vector<WindowDescriptor> descriptors(total_sequences);
-    
+
     // Populate descriptors (lightweight, no string allocation)
-    for (size_t i = 0; i < num_windows; ++i) {
+    for (size_t i = 0; i < num_windows; ++i)
+    {
         uint32_t pos = static_cast<uint32_t>(i * stride);
         descriptors[i * 2] = {pos, 0, static_cast<uint32_t>(i * 2)};         // Forward
         descriptors[i * 2 + 1] = {pos, 1, static_cast<uint32_t>(i * 2 + 1)}; // Reverse
     }
 
     // Step 3: Pre-allocate result vectors
-    std::vector<std::string> result(total_sequences);
-    std::vector<size_t> labels(total_sequences);
+    std::vector<std::string> result;
+    std::vector<size_t> labels;
+
+    result.reserve(total_sequences);
+    labels.reserve(total_sequences);
 
     // Step 4: Calculate processing batches for threads
-    const size_t BATCH_SIZE = 50000;
+    const size_t BATCH_SIZE = 1000;
     const size_t num_batches = (total_sequences + BATCH_SIZE - 1) / BATCH_SIZE;
 
     std::cout << "[FASTA] Total sequences: " << total_sequences << std::endl;
@@ -379,18 +445,18 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
         indicators::option::BarWidth{80},
         indicators::option::PrefixText{"processing FASTA windows (parallel)"},
         indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}
-    };
+        indicators::option::ShowRemainingTime{true}};
 
-    const char* g = genome_sequence.data();
+    const char *g = genome_sequence.data();
     const size_t prefix_len = strlen(PREFIX);
     const size_t postfix_len = strlen(POSTFIX);
-    const char* prefix_ptr = PREFIX;
-    const char* postfix_ptr = POSTFIX;
+    const char *prefix_ptr = PREFIX;
+    const char *postfix_ptr = POSTFIX;
 
     // Step 6: Process batches in parallel using descriptor API + SIMD
 #pragma omp parallel for num_threads(Config::Build::NUM_THREADS) schedule(dynamic, 1)
-    for (size_t batch_id = 0; batch_id < num_batches; ++batch_id) {
+    for (size_t batch_id = 0; batch_id < num_batches; ++batch_id)
+    {
         const size_t start_desc = batch_id * BATCH_SIZE;
         const size_t end_desc = std::min(start_desc + BATCH_SIZE, total_sequences);
         const size_t batch_size = end_desc - start_desc;
@@ -406,13 +472,13 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
             prefix_len,
             postfix_len,
             result,
-            labels
-        );
+            labels);
 
         // Update progress
         size_t done = completed_batches.fetch_add(1) + 1;
         size_t percent = (done * 100) / num_batches;
-        if (percent % 5 == 0) {
+        if (percent % 5 == 0)
+        {
 #pragma omp critical
             progressBar.set_progress(percent);
         }
@@ -420,7 +486,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
 
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
-    std::cout << "[FASTA] Successfully processed " << result.size() << " sequences (descriptor+SIMD)" << std::endl;
+    std::cout << "[FASTA] Successfully processed " << result.size() << " sequences" << std::endl;
     return {result, labels};
 }
 
@@ -434,10 +500,10 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
 
     // Step 2: Process data
-    // auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride);
+    auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride);
 
     //* Use multi-threaded version
-    auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);
+    // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);
 
     // Step 3: Cleanup
 #ifdef __linux__
@@ -681,17 +747,18 @@ std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
         line_number++;
 
         // Update progress bar
-        if (data_size <= 0) continue;
+        if (data_size <= 0)
+            continue;
 
         bytes_processed = current - data;
 
         size_t percent = (bytes_processed * 100) / data_size;
         size_t last_percent = (last_progress_update * 100) / data_size;
-        if (percent >= last_percent + 10) {
+        if (percent >= last_percent + 10)
+        {
             parseBar.set_progress(percent);
             last_progress_update = bytes_processed;
         }
-    
     }
 
     parseBar.set_progress(100);
@@ -732,9 +799,11 @@ std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
         sequences_processed++;
 
         // Update progress bar (only from one thread to avoid conflicts)
-        if (omp_get_thread_num() == 0 && sequence_positions.size() > 0) {
+        if (omp_get_thread_num() == 0 && sequence_positions.size() > 0)
+        {
             size_t percent = (sequences_processed * 100) / sequence_positions.size();
-            if (percent >= last_seq_percent + 10) {
+            if (percent >= last_seq_percent + 10)
+            {
                 processBar.set_progress(percent);
                 last_seq_percent = percent;
             }

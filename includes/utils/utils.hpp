@@ -52,6 +52,8 @@ void analyze_input(const std::vector<std::string> &sequences);
 /// @param k Number of nearest neighbors to save.
 /// @param use_npy Whether to save results in .npy format (default: true).
 /// @return 0 if successful.
+//! This function is deprecated as we return SAM instead of bin/npy files
+
 int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
 
 /// @brief Overload of save_results to handle faiss::idx_t type for neighbors. ALl params are the same as above.
@@ -62,6 +64,8 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
 /// @param k
 /// @param use_npy
 /// @return
+//! This function is deprecated as we return SAM instead of bin/npy files
+
 int save_results(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
 
 using ConfigValue = std::variant<size_t, float, std::string>;

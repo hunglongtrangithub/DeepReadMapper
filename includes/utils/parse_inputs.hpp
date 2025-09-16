@@ -4,6 +4,7 @@
 #include <utility>
 #include <omp.h>
 #include <immintrin.h>
+#include <array>
 #include "utils.hpp"
 
 #define PREFIX "<"
@@ -48,6 +49,11 @@ std::pair<const char *, size_t> read_fasta_mmap(const std::string &fasta_file, i
 /// @param fd File descriptor (for mmap cleanup)
 /// @return Pair of data pointer and size
 std::pair<const char *, size_t> read_fasta(const std::string &fasta_file, std::unique_ptr<char[]> &buffer, int &fd);
+
+/// @brief Extract clean genome sequence from FASTA data
+/// @param fasta_file Path to the FASTA file
+/// @return Full genome sequence as a single string
+std::string extract_FASTA_sequence(const std::string &fasta_file);
 
 /// @brief Process FASTA data (single-threaded, separated from I/O)
 /// @param data Pointer to file data
