@@ -160,7 +160,7 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
 
         if (actual_position >= ref_seqs.size())
         {
-            throw std::out_of_range("Find out bound ID in find_sequences: " + std::to_string(actual_position) + " >= " + std::to_string(ref_seqs.size()));
+            // throw std::out_of_range("Find out bound ID in find_sequences: " + std::to_string(actual_position) + " >= " + std::to_string(ref_seqs.size()));
             continue;
         }
 
@@ -195,7 +195,8 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
     // Start fetching sequences
     std::vector<std::string> results(unique_positions.size());
 
-#pragma omp parallel for schedule(dynamic) num_threads(Config::PostProcess::NUM_THREADS)
+    //* Use single-threaded for static lookup as each lookup is O(1)
+    // #pragma omp parallel for schedule(dynamic) num_threads(Config::PostProcess::NUM_THREADS)
     for (size_t i = 0; i < unique_positions.size(); ++i)
     {
         size_t pos = unique_positions[i];
@@ -266,8 +267,13 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
+    if (k < rerank_lim * stride)
+    {
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+    }
     // Parallelize across queries
     // #pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+
     for (size_t i = 0; i < total_queries; ++i)
     {
         // Select only first 5 candidates by HNSW score as preliminary ranking
@@ -330,6 +336,11 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
 
+    if (k < rerank_lim * stride)
+    {
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+    }
+
     auto converted_neighbors = convert_neighbors(neighbors);
     size_t total_queries = query_embeddings.size();
 
@@ -367,7 +378,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
     // Early termination for stride == 1 (dense index)
     if (stride == 1)
     {
-        std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker" << std::endl;
+        std::cout << "[POST-PROCESS] Identified dense index (stride == 1), skipping reranker" << std::endl;
 
         std::vector<std::string> final_seqs;
         std::vector<float> final_scores;
@@ -443,6 +454,11 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
+
+    if (k < rerank_lim * stride)
+    {
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+    }
 
     auto converted_neighbors = convert_neighbors(neighbors);
     size_t total_queries = query_embeddings.size();

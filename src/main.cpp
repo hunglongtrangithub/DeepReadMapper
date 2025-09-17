@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
         else
         {
             std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
-            ref_sequences = read_file(ref_seqs_file, ref_len, 1).first;
+            ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
 
             std::cout << "[MAIN] Loaded " << ref_sequences.size() << " reference sequences from " << ref_seqs_file << std::endl;
         }
@@ -192,13 +192,14 @@ int main(int argc, char *argv[])
         // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k);
 
         //* L2 distance reranking
+        int rerank_lim = Config::PostProcess::RERANK_LIM;
         if (use_dynamic)
         {
-            std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer);
+            std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
         }
         else
         {
-            std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer);
+            std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
         }
 
         end_time = std::chrono::high_resolution_clock::now();

@@ -18,20 +18,23 @@ std::pair<std::vector<std::string>, std::vector<int>> reranker(const std::vector
     std::vector<std::string> top_seqs;
     std::vector<int> top_scores;
 
-    size_t actual_k = std::min(k, num_cands);
-    top_seqs.reserve(actual_k);
-    top_scores.reserve(actual_k);
+    if (num_cands < k)
+    {
+        throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + " < " + std::to_string(k) + ")");
+    }
+
+    top_seqs.reserve(k);
+    top_scores.reserve(k);
 
     std::vector<size_t> indices(num_cands);
     std::iota(indices.begin(), indices.end(), 0);
 
-    // FIX: Only partial_sort up to actual_k, not k
-    std::partial_sort(indices.begin(), indices.begin() + actual_k, indices.end(),
+    std::partial_sort(indices.begin(), indices.begin() + k, indices.end(),
                       [&scores](size_t i1, size_t i2)
                       { return scores[i1] > scores[i2]; });
 
-    // Step 3: Collect top actual_k sequences and scores
-    for (size_t i = 0; i < actual_k; ++i)
+    // Step 3: Collect top k sequences and scores
+    for (size_t i = 0; i < k; ++i)
     {
         top_seqs.push_back(cand_seqs[indices[i]]);
         top_scores.push_back(scores[indices[i]]);
@@ -60,19 +63,23 @@ std::pair<std::vector<std::string>, std::vector<float>> reranker(const std::vect
     std::vector<std::string> top_seqs;
     std::vector<float> top_dists;
 
-    size_t actual_k = std::min(k, num_cands);
-    top_seqs.reserve(actual_k);
-    top_dists.reserve(actual_k);
+    if (num_cands < k)
+    {
+        throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + " < " + std::to_string(k) + ")");
+    }
+
+    top_seqs.reserve(k);
+    top_dists.reserve(k);
 
     std::vector<size_t> indices(num_cands);
     std::iota(indices.begin(), indices.end(), 0);
 
-    std::partial_sort(indices.begin(), indices.begin() + actual_k, indices.end(),
+    std::partial_sort(indices.begin(), indices.begin() + k, indices.end(),
                       [&l2_dists](size_t i1, size_t i2)
                       { return l2_dists[i1] < l2_dists[i2]; });
 
-    // Step 3: Collect top actual_k sequences and distances
-    for (size_t i = 0; i < actual_k; ++i)
+    // Step 3: Collect top k sequences and distances
+    for (size_t i = 0; i < k; ++i)
     {
         top_seqs.push_back(cand_seqs[indices[i]]);
         top_dists.push_back(l2_dists[indices[i]]);
@@ -141,20 +148,25 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
         }
 
         // Sort and get top k
-        size_t actual_k = std::min(k, num_cands);
+        // There's an error if not enough candidates are available
+        if (num_cands < k)
+        {
+            throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + " < " + std::to_string(k) + ") for query " + std::to_string(q));
+        }
+
         std::vector<size_t> indices(num_cands);
         std::iota(indices.begin(), indices.end(), 0);
 
-        std::partial_sort(indices.begin(), indices.begin() + actual_k, indices.end(),
+        std::partial_sort(indices.begin(), indices.begin() + k, indices.end(),
                           [&l2_dists](size_t i1, size_t i2)
                           { return l2_dists[i1] < l2_dists[i2]; });
 
         std::vector<std::string> top_seqs;
         std::vector<float> top_dists;
-        top_seqs.reserve(actual_k);
-        top_dists.reserve(actual_k);
+        top_seqs.reserve(k);
+        top_dists.reserve(k);
 
-        for (size_t i = 0; i < actual_k; ++i)
+        for (size_t i = 0; i < k; ++i)
         {
             top_seqs.push_back(all_cand_seqs[start_idx + indices[i]]);
             top_dists.push_back(l2_dists[indices[i]]);

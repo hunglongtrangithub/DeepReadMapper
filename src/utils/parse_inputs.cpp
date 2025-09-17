@@ -220,7 +220,7 @@ std::string extract_FASTA_sequence(const std::string &fasta_file)
 }
 
 // Single-threaded FASTA data processing
-std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride, bool lookup_mode)
 {
     std::cout << "[FASTA] Processing FASTA data..." << std::endl;
 
@@ -282,17 +282,25 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
         {
             std::string window = buffer.substr(buf_start, ref_len);
 
-            std::string forward;
-            forward.reserve(2 + ref_len);
-            forward.append(PREFIX).append(window).append(POSTFIX);
-            result.push_back(forward);
-            labels.push_back((position << 1) | 0); // Forward
-
             std::string rev = reverse_complement(window);
+            std::string forward;
             std::string reverse;
-            reverse.reserve(2 + ref_len);
-            reverse.append(PREFIX).append(rev).append(POSTFIX);
+            
+            if (!lookup_mode) {
+                forward.reserve(2 + ref_len);
+                forward.append(PREFIX).append(window).append(POSTFIX);
+                
+                reverse.reserve(2 + ref_len);
+                reverse.append(PREFIX).append(rev).append(POSTFIX);
+            } else {
+                forward = window;
+                reverse = rev;
+            }
+
             result.push_back(reverse);
+            result.push_back(forward);
+
+            labels.push_back((position << 1) | 0); // Forward
             labels.push_back((position << 1) | 1); // Reverse complement
 
             buf_start += stride;
@@ -383,6 +391,8 @@ void process_window_batch_simd(
 
 std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
 {
+    //* Multi-threaded doesn't support lookup mode for now
+
     std::cout << "[FASTA] Start formatting data..." << std::endl;
 
     // Step 1: Extract genome sequence (single-threaded)
@@ -491,7 +501,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
 }
 
 // Combined wrapper function that handles both I/O and processing
-std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride, bool lookup_mode)
 {
     std::unique_ptr<char[]> buffer;
     int fd = -1;
@@ -500,7 +510,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     auto [data, data_size] = read_fasta(fasta_file, buffer, fd);
 
     // Step 2: Process data
-    auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride);
+    auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride, lookup_mode);
 
     //* Use multi-threaded version
     // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);

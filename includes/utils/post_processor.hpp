@@ -117,6 +117,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
 /// @param rerank_lim top-k candidates passed to reranker (default: 5)
+/// @note During configuration for rerank_lim and k, ensure rerank_lim <= k / stride to guarantee enough candidates for dense index retrieval.
 /// @return Pair of vectors: 1st is sequences, 2nd is L2 distances
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(

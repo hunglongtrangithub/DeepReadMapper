@@ -184,8 +184,9 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
 /// @param file_path Path to the input file (FASTA, FASTQ, or plain text).
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false).
 /// @return Vector of input sequences as strings.
-std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len, size_t stride)
+std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len, size_t stride, bool lookup_mode)
 {
     // Check file extension
     std::string file_ext = std::filesystem::path(file_path).extension().string();
@@ -197,7 +198,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::st
     if (file_ext == ".fna" || file_ext == ".fasta" || file_ext == ".fa")
     {
         std::cout << "Detected FASTA file format." << std::endl;
-        return preprocess_fasta(file_path, ref_len, stride);
+        return preprocess_fasta(file_path, ref_len, stride, lookup_mode);
     }
     else if (file_ext == ".fastq")
     {

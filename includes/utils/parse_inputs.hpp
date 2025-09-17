@@ -61,8 +61,9 @@ std::string extract_FASTA_sequence(const std::string &fasta_file);
 /// @param fasta_file Original filename (for estimation)
 /// @param ref_len Length of each reference sequence to cut into (doesn't include PREFIX/POSTFIX)
 /// @param stride Length of non-overlap part between 2 windows
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences
 /// @return Vector of formatted sequences
-std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride = 1, bool lookup_mode = false);
 
 /// @brief Process FASTA data using OpenMP for parallel processing (separated from I/O)
 /// @param data Pointer to file data
@@ -77,8 +78,9 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
 /// @param fasta_file Path to the FASTA file
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX)
 /// @param stride Length of non-overlap part between 2 windows
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences
 /// @return Vector of formatted sequences
-std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const std::string &fasta_file, size_t ref_len, size_t stride = 1, bool lookup_mode = false);
 
 /// @brief Read FASTQ file using traditional file I/O
 /// @param fastq_file Path to the FASTQ file

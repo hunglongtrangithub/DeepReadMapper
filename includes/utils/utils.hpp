@@ -37,8 +37,9 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path);
 /// @param file_path Path to the input file
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false).
 /// @return Vector of input sequences as strings
-std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);
 
 /// @brief Analyze input sequences and print statistics.
 /// @param sequences Vector of input sequences as strings.
