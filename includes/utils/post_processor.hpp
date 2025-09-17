@@ -4,11 +4,11 @@
 #include "parse_inputs.hpp"
 #include "reranker.hpp"
 #include "progressbar.h"
-#include <omp.h>
 #include <memory>
 #include <functional>
 #include <type_traits>
 #include <chrono>
+#include <omp.h>
 
 struct PositionInfo
 {
@@ -60,90 +60,11 @@ std::vector<std::string> find_sequences(const std::string &ref_genome, const std
 /// @return Vector of sequences found, in the same order as ids
 std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs, const std::vector<size_t> &ids, size_t stride = 1);
 
-/// @brief A template wrapper to handle the post-processing step after HNSW search with custom reranker
-/// @param neighbors 2D vector of neighbor indices from HNSW search
-/// @param distances 2D vector of distances from HNSW search
-/// @param ref_genome Reference genome as a single string
-/// @param queries Vector of query sequences (with PREFIX/POSTFIX)
-/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
-/// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
-/// @param k Number of final candidates to return per query
-/// @param rerank_func A callable function that takes in candidate sequences and a query, and returns top k sequences and their scores
-/// @return Pair of vectors: 1st is sequences, 2nd is scores
-template <typename QueryType, typename ScoreType>
-std::pair<std::vector<std::string>, std::vector<ScoreType>> post_process_core(
-    const std::vector<std::vector<size_t>> &neighbors,
-    const std::vector<std::vector<float>> &distances,
-    const std::string &ref_genome,
-    const std::vector<QueryType> &queries,
-    size_t ref_len, size_t stride, size_t k,
-    std::function<std::pair<std::vector<std::string>, std::vector<ScoreType>>(
-        const std::vector<std::string> &, const QueryType &, size_t)>
-        rerank_func)
-{
-    size_t total_queries = queries.size();
-
-    // Pre-allocate results for each query
-    std::vector<std::vector<std::string>> all_final_seqs(total_queries);
-    std::vector<std::vector<ScoreType>> all_scores(total_queries);
-
-    // Thread-safe progress tracking
-    std::atomic<size_t> completed_queries(0);
-
-    // Hide cursor and create progress bar
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"post-processing"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
-    // Parallelize across queries
-    // #pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
-    for (size_t i = 0; i < total_queries; ++i)
-    {
-        //* Select only first 5 candidates by HNSW score as preliminary ranking
-        std::vector<size_t> query_neighbors(neighbors[i].begin(),
-                                            neighbors[i].begin() + std::min(size_t(5), neighbors[i].size()));
-
-        // Get candidate sequences
-        std::vector<std::string> query_cand_seqs = find_sequences(ref_genome, query_neighbors, ref_len, stride);
-
-        // Rerank candidates using the provided function
-        auto [top_seqs, top_scores] = rerank_func(query_cand_seqs, queries[i], k);
-
-        // Store results for this query
-        all_final_seqs[i] = std::move(top_seqs);
-        all_scores[i] = std::move(top_scores);
-
-        // Update progress bar (thread-safe)
-        size_t current_completed = completed_queries.fetch_add(1) + 1;
-
-        if (current_completed % 100 == 0)
-        {
-            size_t current_progress_percent = (current_completed * 100) / total_queries;
-            progressBar.set_progress(current_progress_percent);
-        }
-    }
-
-    // Flatten results
-    std::vector<std::string> final_seqs;
-    std::vector<ScoreType> scores;
-    final_seqs.reserve(total_queries * k);
-    scores.reserve(total_queries * k);
-
-    for (size_t i = 0; i < total_queries; ++i)
-    {
-        final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
-        scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
-    }
-
-    // Complete progress bar and show cursor
-    progressBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    return {final_seqs, scores};
-}
+/// @brief Helper function to convert neighbor types to size_t
+template <typename NeighborType>
+/// @param neighbors 2D vector of neighbor indices (any integral type)
+/// @return 2D vector of neighbor indices as size_t
+std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector<NeighborType>> &neighbors);
 
 /// @brief Post-process with Smith-Waterman reranking using dynamic sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -153,6 +74,7 @@ std::pair<std::vector<std::string>, std::vector<ScoreType>> post_process_core(
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @param k Number of final candidates to return per query
+/// @param rerank_lim top-k candidates passed to reranker (default: 5)
 /// @return Pair of vectors: 1st is sequences, 2nd is Smith-Waterman scores
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
@@ -160,7 +82,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k);
+    size_t ref_len, size_t stride, size_t k, size_t rerank_lim = 5);
 
 /// @brief Post-process with L2 distance reranking using dynamic sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -172,6 +94,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
 /// @param k Number of final candidates to return per query
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
+/// @param rerank_lim top-k candidates passed to reranker (default: 5)
 /// @return Pair of vectors: 1st is sequences, 2nd is L2 distances
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
@@ -181,7 +104,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer);
+    Vectorizer &vectorizer, size_t rerank_lim = 5);
 
 /// @brief Post-process with L2 distance reranking using static sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -193,6 +116,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
 /// @param k Number of final candidates to return per query
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
+/// @param rerank_lim top-k candidates passed to reranker (default: 5)
 /// @return Pair of vectors: 1st is sequences, 2nd is L2 distances
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
@@ -202,4 +126,4 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer);
+    Vectorizer &vectorizer, size_t rerank_lim = 5);

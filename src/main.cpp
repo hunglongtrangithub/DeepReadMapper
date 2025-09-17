@@ -97,13 +97,15 @@ int main(int argc, char *argv[])
         std::vector<std::string> ref_sequences = {};
         if (use_dynamic)
         {
-            std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
-            ref_sequences = read_file(ref_seqs_file, ref_len, 1).first;
+            std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
+            ref_genome = extract_FASTA_sequence(ref_seqs_file);
         }
         else
         {
-            std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
-            ref_genome = extract_FASTA_sequence(ref_seqs_file);
+            std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
+            ref_sequences = read_file(ref_seqs_file, ref_len, 1).first;
+
+            std::cout << "[MAIN] Loaded " << ref_sequences.size() << " reference sequences from " << ref_seqs_file << std::endl;
         }
 
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -181,18 +183,21 @@ int main(int argc, char *argv[])
 
         std::cout << "[MAIN] POST-PROCESSING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
-        
+
         // Declare variables outside the if-else blocks
         std::vector<std::string> final_seqs;
         std::vector<float> final_dists;
-        
+
         //* Smith-Waterman reranking
         // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k);
-        
+
         //* L2 distance reranking
-        if (use_dynamic) {
+        if (use_dynamic)
+        {
             std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer);
-        } else {
+        }
+        else
+        {
             std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer);
         }
 
