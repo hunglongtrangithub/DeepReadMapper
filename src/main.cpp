@@ -97,12 +97,12 @@ int main(int argc, char *argv[])
         std::vector<std::string> ref_sequences = {};
         if (use_dynamic)
         {
-            std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
+            std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
             ref_genome = extract_FASTA_sequence(ref_seqs_file);
         }
         else
         {
-            std::cout << "[MAIN] Using DYNAMIC fetching for reference sequences" << std::endl;
+            std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
             ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
 
             std::cout << "[MAIN] Loaded " << ref_sequences.size() << " reference sequences from " << ref_seqs_file << std::endl;
@@ -222,14 +222,17 @@ int main(int argc, char *argv[])
         // Save results to disk
         //! This is deprecated
         // TODO: Replace from bin/npy output to SAM format
-        //  std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
-        //  start_time = std::chrono::high_resolution_clock::now();
+         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+         start_time = std::chrono::high_resolution_clock::now();
 
-        // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+        bool use_npy = true;
+        std::string indices_file = output_dir + "/neighbors.npy";
+        std::string distances_file = output_dir + "/distances.npy";
+        save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
 
-        // end_time = std::chrono::high_resolution_clock::now();
-        // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+        end_time = std::chrono::high_resolution_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
