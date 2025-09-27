@@ -188,9 +188,6 @@ int main(int argc, char *argv[])
         std::vector<std::string> final_seqs;
         std::vector<float> final_dists;
 
-        //* Smith-Waterman reranking
-        // auto [final_seqs, final_dists] = post_process(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k);
-
         //* L2 distance reranking
         int rerank_lim = Config::PostProcess::RERANK_LIM;
         if (use_dynamic)
@@ -201,6 +198,16 @@ int main(int argc, char *argv[])
         {
             std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
         }
+
+        //* Smith-Waterman reranking
+        // if (use_dynamic)
+        // {
+        //     std::tie(final_seqs, final_scores) = post_process_sw_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, rerank_lim);
+        // }
+        // else
+        // {
+        //     std::tie(final_seqs, final_scores) = post_process_sw_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, rerank_lim);
+        // }
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -222,22 +229,22 @@ int main(int argc, char *argv[])
         // Save results to disk
         //! This is deprecated
         // TODO: Replace from bin/npy output to SAM format
-         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
-         start_time = std::chrono::high_resolution_clock::now();
+        // std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+        // start_time = std::chrono::high_resolution_clock::now();
 
-        bool use_npy = true;
-        std::string indices_file = output_dir + "/neighbors.npy";
-        std::string distances_file = output_dir + "/distances.npy";
-        save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+        // bool use_npy = true;
+        // std::string indices_file = output_dir + "/neighbors.npy";
+        // std::string distances_file = output_dir + "/distances.npy";
+        // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
 
-        end_time = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+        // end_time = std::chrono::high_resolution_clock::now();
+        // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
-        auto master_end = std::chrono::high_resolution_clock::now();
-        auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
-        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
-                  << std::endl;
+        // auto master_end = std::chrono::high_resolution_clock::now();
+        // auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
+        // std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
+        //           << std::endl;
 
         std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
     }

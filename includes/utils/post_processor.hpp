@@ -77,10 +77,28 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
 /// @param rerank_lim top-k candidates passed to reranker (default: 5)
 /// @return Pair of vectors: 1st is sequences, 2nd is Smith-Waterman scores
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
+std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k, size_t rerank_lim = 5);
+
+/// @brief Post-process with Smith-Waterman reranking using static sequence fetching
+/// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
+/// @param distances 2D vector of distances from HNSW search
+/// @param ref_seqs Vector of pre-extracted reference sequences
+/// @param query_seqs Vector of query sequences
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
+/// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
+/// @param k Number of final candidates to return per query
+/// @param rerank_lim top-k candidates passed to reranker (default: 5)
+/// @return Pair of vectors: 1st is sequences, 2nd is Smith-Waterman scores
+template <typename NeighborType>
+std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
+    const std::vector<std::vector<NeighborType>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k, size_t rerank_lim = 5);
 

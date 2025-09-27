@@ -236,15 +236,16 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
     }
 }
 
-// Smith-Waterman version (templated)
+// Smith-Waterman version with dynamic lookup (templated)
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
+std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k, size_t rerank_lim)
 {
+    std::cout << "[POST-PROCESS] Using dynamic lookup & SW reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: sw_score" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
@@ -271,21 +272,18 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
     {
         throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
     }
-    // Parallelize across queries
-    // #pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
 
+#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
     for (size_t i = 0; i < total_queries; ++i)
     {
-        // Select only first 5 candidates by HNSW score as preliminary ranking
         size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
-
         std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
 
         // Get candidate sequences
         std::vector<std::string> query_cand_seqs = find_sequences(ref_genome, query_neighbors, ref_len, stride);
 
         // Rerank candidates using Smith-Waterman
-        auto [top_seqs, top_scores] = reranker(query_cand_seqs, query_seqs[i], k);
+        auto [top_seqs, top_scores] = sw_reranker(query_cand_seqs, query_seqs[i], k);
 
         // Store results for this query
         all_final_seqs[i] = std::move(top_seqs);
@@ -293,13 +291,16 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
 
         // Update progress bar (thread-safe)
         size_t current_completed = completed_queries.fetch_add(1) + 1;
-
         if (current_completed % 100 == 0)
         {
             size_t current_progress_percent = (current_completed * 100) / total_queries;
             progressBar.set_progress(current_progress_percent);
         }
     }
+
+    // Complete progress bar and show cursor
+    progressBar.set_progress(100);
+    indicators::show_console_cursor(true);
 
     // Flatten results
     std::vector<std::string> final_seqs;
@@ -313,9 +314,86 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw(
         scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
     }
 
+    return {final_seqs, scores};
+}
+
+// Smith-Waterman version with static lookup (templated)
+template <typename NeighborType>
+std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
+    const std::vector<std::vector<NeighborType>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::vector<std::string> &ref_seqs,
+    const std::vector<std::string> &query_seqs,
+    size_t ref_len, size_t stride, size_t k, size_t rerank_lim)
+{
+    std::cout << "[POST-PROCESS] Using static lookup & SW reranker" << std::endl;
+    std::cout << "[POST-PROCESS] Configs:" << std::endl;
+    std::cout << "[POST-PROCESS] Metrics: sw_score" << std::endl;
+    std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
+
+    auto converted_neighbors = convert_neighbors(neighbors);
+    size_t total_queries = query_seqs.size();
+
+    // Pre-allocate results for each query
+    std::vector<std::vector<std::string>> all_final_seqs(total_queries);
+    std::vector<std::vector<int>> all_scores(total_queries);
+
+    // Thread-safe progress tracking
+    std::atomic<size_t> completed_queries(0);
+
+    // Hide cursor and create progress bar
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"post-processing"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    if (k < rerank_lim * stride)
+    {
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+    }
+
+#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+    for (size_t i = 0; i < total_queries; ++i)
+    {
+        size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
+        std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
+
+        // Get candidate sequences using static lookup
+        std::vector<std::string> query_cand_seqs = find_sequences(ref_seqs, query_neighbors, stride);
+
+        // Rerank candidates using Smith-Waterman
+        auto [top_seqs, top_scores] = sw_reranker(query_cand_seqs, query_seqs[i], k);
+
+        // Store results for this query
+        all_final_seqs[i] = std::move(top_seqs);
+        all_scores[i] = std::move(top_scores);
+
+        // Update progress bar (thread-safe)
+        size_t current_completed = completed_queries.fetch_add(1) + 1;
+        if (current_completed % 100 == 0)
+        {
+            size_t current_progress_percent = (current_completed * 100) / total_queries;
+            progressBar.set_progress(current_progress_percent);
+        }
+    }
+
     // Complete progress bar and show cursor
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
+
+    // Flatten results
+    std::vector<std::string> final_seqs;
+    std::vector<int> scores;
+    final_seqs.reserve(total_queries * k);
+    scores.reserve(total_queries * k);
+
+    for (size_t i = 0; i < total_queries; ++i)
+    {
+        final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
+        scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
+    }
 
     return {final_seqs, scores};
 }
@@ -409,7 +487,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
         return {final_seqs, final_scores};
     }
 
-    // Step 3: Pass flattened data to a modified batch_reranker
+    // Step 3: Pass flattened data to batch_reranker
     std::cout << "[POST-PROCESS] Running batched reranker for all queries." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
     auto batch_results = batch_reranker(all_cand_seqs, query_start_indices, query_embeddings, k, vectorizer);
@@ -563,8 +641,11 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, size_t);
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, size_t);
 
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+
+template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
 
 template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
 template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);

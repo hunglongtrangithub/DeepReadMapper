@@ -1,6 +1,6 @@
 #include "reranker.hpp"
 
-std::pair<std::vector<std::string>, std::vector<int>> reranker(const std::vector<std::string> &cand_seqs, const std::string &query_seq, size_t k)
+std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vector<std::string> &cand_seqs, const std::string &query_seq, size_t k)
 {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0)
@@ -43,7 +43,7 @@ std::pair<std::vector<std::string>, std::vector<int>> reranker(const std::vector
     return {top_seqs, top_scores};
 }
 
-std::pair<std::vector<std::string>, std::vector<float>> reranker(const std::vector<std::string> &cand_seqs, const std::vector<float> &query_embedding, size_t k, Vectorizer &vectorizer)
+std::pair<std::vector<std::string>, std::vector<float>> sw_reranker(const std::vector<std::string> &cand_seqs, const std::vector<float> &query_embedding, size_t k, Vectorizer &vectorizer)
 {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0)
