@@ -470,7 +470,7 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
     std::vector<size_t> all_neighbor_indices;
     std::vector<size_t> query_start_indices;
 
-    // Take only top 5 candidates per query to limit workload
+    // Take top candidates per query to limit workload
     for (size_t i = 0; i < total_queries; ++i)
     {
         query_start_indices.push_back(all_neighbor_indices.size());

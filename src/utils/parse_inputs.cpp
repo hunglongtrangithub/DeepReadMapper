@@ -647,66 +647,78 @@ std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::u
 }
 
 // FASTQ data processing
-std::vector<std::string> format_fastq(const char *data, size_t data_size)
-{
-    std::cout << "Processing FASTQ data..." << std::endl;
-
-    // Estimate number of sequences (rough estimate: file_size / 150 for FASTQ)
+std::vector<std::string> format_fastq(const char *data, size_t data_size, bool verbose) {
+    if (verbose) {
+        std::cout << "Processing FASTQ data..." << std::endl;
+    }
+    
+    // Count newlines to estimate sequences
+    size_t estimated_seqs = std::count(data, data + data_size, '\n') / 4;
+    
     std::vector<std::string> sequences;
-    sequences.reserve(data_size / 150);
-
-    // Setup progress bar
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing FASTQ sequences"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
+    sequences.reserve(estimated_seqs);
+    
     const char *current = data;
     const char *end = data + data_size;
-    int line_number = 0;
+    const size_t prefix_len = strlen(PREFIX);
+    const size_t postfix_len = strlen(POSTFIX);
+    
+    // Setup progress bar only if verbose
+    std::unique_ptr<indicators::ProgressBar> progressBar;
+    if (verbose) {
+        indicators::show_console_cursor(false);
+        progressBar = std::make_unique<indicators::ProgressBar>(
+            indicators::option::BarWidth{80},
+            indicators::option::PrefixText{"processing FASTQ sequences"},
+            indicators::option::ShowElapsedTime{true},
+            indicators::option::ShowRemainingTime{true});
+        progressBar->set_progress(0);
+    }
+    
+    int line_num = 0;
     size_t bytes_processed = 0;
     size_t last_progress_update = 0;
-
-    while (current < end)
-    {
+    
+    while (current < end) {
         const char *line_start = current;
-
-        // Find end of line
-        while (current < end && *current != '\n' && *current != '\r')
-        {
-            current++;
+        
+        // Find line end
+        while (current < end && *current != '\n') current++;
+        
+        if (line_num % 4 == 1) {
+            size_t seq_len = current - line_start;
+            size_t total_len = prefix_len + seq_len + postfix_len;
+            
+            // Single allocation + memcpy (fastest)
+            std::string result(total_len, '\0');
+            char *dest = result.data();
+            
+            memcpy(dest, PREFIX, prefix_len);
+            memcpy(dest + prefix_len, line_start, seq_len);
+            memcpy(dest + prefix_len + seq_len, POSTFIX, postfix_len);
+            
+            sequences.emplace_back(std::move(result));
         }
-
-        // Process sequence line (2nd line in every 4-line block)
-        if (line_number % 4 == 1 && current > line_start)
-        {
-            std::string line(line_start, current - line_start);
-            sequences.emplace_back(PREFIX + line + POSTFIX);
-        }
-
-        // Skip line endings
-        while (current < end && (*current == '\n' || *current == '\r'))
-        {
-            current++;
-        }
-
-        line_number++;
-
-        // Update progress bar
-        bytes_processed = current - data;
-        if (bytes_processed - last_progress_update > 1024 * 1024)
-        {
-            progressBar.set_progress((bytes_processed * 100) / data_size);
-            last_progress_update = bytes_processed;
+        
+        if (current < end) current++; // Skip \n
+        line_num++;
+        
+        // Update progress bar only if verbose
+        if (verbose && progressBar) {
+            bytes_processed = current - data;
+            if (bytes_processed - last_progress_update > 1024 * 1024) {
+                progressBar->set_progress((bytes_processed * 100) / data_size);
+                last_progress_update = bytes_processed;
+            }
         }
     }
-
-    progressBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
+    
+    if (verbose && progressBar) {
+        progressBar->set_progress(100);
+        indicators::show_console_cursor(true);
+        std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
+    }
+    
     return sequences;
 }
 
@@ -714,115 +726,71 @@ std::vector<std::string> format_fastq(const char *data, size_t data_size)
 std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
 {
     std::cout << "Processing FASTQ data..." << std::endl;
-
-    // First pass: count lines and find sequence line positions
-    std::vector<std::pair<const char *, size_t>> sequence_positions;
-    const char *current = data;
-    const char *end = data + data_size;
-    int line_number = 0;
-
-    // Setup progress bar for parsing
+    
+    const size_t num_threads = Config::Search::NUM_THREADS;
+    const size_t chunk_size = data_size / num_threads;
+    
+    std::vector<std::vector<std::string>> thread_results(num_threads);
+    
+    // Setup progress tracking
+    std::atomic<size_t> completed_threads{0};
+    size_t last_reported_percent = 0;
     indicators::show_console_cursor(false);
-    indicators::ProgressBar parseBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"parsing FASTQ structure (single-threaded)"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
-    size_t bytes_processed = 0;
-    size_t last_progress_update = 0;
-
-    while (current < end)
-    {
-        const char *line_start = current;
-
-        // Find end of line
-        while (current < end && *current != '\n' && *current != '\r')
-        {
-            current++;
-        }
-
-        // Store sequence line positions (2nd line in every 4-line block)
-        if (line_number % 4 == 1 && current > line_start)
-        {
-            sequence_positions.emplace_back(line_start, current - line_start);
-        }
-
-        // Skip line endings
-        while (current < end && (*current == '\n' || *current == '\r'))
-        {
-            current++;
-        }
-
-        line_number++;
-
-        // Update progress bar
-        if (data_size <= 0)
-            continue;
-
-        bytes_processed = current - data;
-
-        size_t percent = (bytes_processed * 100) / data_size;
-        size_t last_percent = (last_progress_update * 100) / data_size;
-        if (percent >= last_percent + 10)
-        {
-            parseBar.set_progress(percent);
-            last_progress_update = bytes_processed;
-        }
-    }
-
-    parseBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    std::cout << "Found " << sequence_positions.size() << " sequences" << std::endl;
-
-    // Estimate and reserve space
-    std::vector<std::string> sequences(sequence_positions.size());
-
-    // Setup progress bar for processing
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar processBar{
+    indicators::ProgressBar progressBar{
         indicators::option::BarWidth{80},
         indicators::option::PrefixText{"processing FASTQ sequences (parallel)"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
-
-    size_t sequences_processed = 0;
-    size_t last_seq_percent = 0;
-
-// Parallel processing of sequences
-#pragma omp parallel for num_threads(Config::Search::NUM_THREADS) schedule(dynamic)
-    for (size_t i = 0; i < sequence_positions.size(); ++i)
+    
+    #pragma omp parallel for num_threads(num_threads)
+    for (size_t t = 0; t < num_threads; ++t)
     {
-        const auto &[line_start, line_length] = sequence_positions[i];
-        std::string line(line_start, line_length);
-
-        // Reserve space and construct the sequence
-        std::string result;
-        result.reserve(line_length + 2); // +2 for PREFIX and POSTFIX
-        result.append(PREFIX).append(line).append(POSTFIX);
-
-        sequences[i] = std::move(result);
-
-        // Update progress (thread-safe)
-#pragma omp atomic
-        sequences_processed++;
-
-        // Update progress bar (only from one thread to avoid conflicts)
-        if (omp_get_thread_num() == 0 && sequence_positions.size() > 0)
+        size_t start = t * chunk_size;
+        size_t end = (t == num_threads - 1) ? data_size : (t + 1) * chunk_size;
+        
+        // Align to line boundaries
+        if (start > 0) {
+            while (start < data_size && data[start - 1] != '\n') start++;
+        }
+        if (end < data_size) {
+            while (end < data_size && data[end] != '\n') end++;
+        }
+        
+        // Reuse format_fastq for each chunk (without verbose to avoid progress conflicts)
+        thread_results[t] = format_fastq(data + start, end - start, false);
+        
+        // Update progress every 10%
+        size_t done = completed_threads.fetch_add(1) + 1;
+        size_t current_percent = (done * 100) / num_threads;
+        
+        #pragma omp critical
         {
-            size_t percent = (sequences_processed * 100) / sequence_positions.size();
-            if (percent >= last_seq_percent + 10)
-            {
-                processBar.set_progress(percent);
-                last_seq_percent = percent;
+            // Only update if we've reached next 10% milestone
+            if (current_percent >= last_reported_percent + 10 || current_percent == 100) {
+                progressBar.set_progress(current_percent);
+                last_reported_percent = (current_percent / 10) * 10; // Round down to nearest 10%
             }
         }
     }
-
-    processBar.set_progress(100);
+    
+    progressBar.set_progress(100);
     indicators::show_console_cursor(true);
-
+    
+    // Merge results
+    size_t total_seqs = 0;
+    for (const auto& chunk : thread_results) {
+        total_seqs += chunk.size();
+    }
+    
+    std::vector<std::string> sequences;
+    sequences.reserve(total_seqs);
+    
+    for (auto& chunk : thread_results) {
+        sequences.insert(sequences.end(), 
+                        std::make_move_iterator(chunk.begin()),
+                        std::make_move_iterator(chunk.end()));
+    }
+    
     std::cout << "Successfully processed " << sequences.size() << " sequences (parallel)" << std::endl;
     return sequences;
 }
@@ -841,7 +809,7 @@ std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
     std::cout << "[FASTQ] File read time: " << duration.count() << " ms" << std::endl;
 
     // Step 2: Process data
-    // auto sequences = format_fastq(data, data_size);
+    // auto sequences = format_fastq(data, data_size, true);
 
     //* Format with multi-threads
     start_time = std::chrono::high_resolution_clock::now();

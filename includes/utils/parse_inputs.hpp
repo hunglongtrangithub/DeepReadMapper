@@ -104,8 +104,9 @@ std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::u
 /// @brief Process FASTQ data (separated from I/O)
 /// @param data Pointer to file data
 /// @param data_size Size of data
+/// @param verbose If true, print progressbar
 /// @return Vector of formatted sequences with PREFIX and POSTFIX tags
-std::vector<std::string> format_fastq(const char *data, size_t data_size);
+std::vector<std::string> format_fastq(const char *data, size_t data_size, bool verbose = true);
 
 /// @brief Process FASTQ data using OpenMP for parallel processing (separated from I/O)
 /// @param data Pointer to file data
