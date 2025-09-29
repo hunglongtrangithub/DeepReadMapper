@@ -464,7 +464,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
     const char *postfix_ptr = POSTFIX;
 
     // Step 6: Process batches in parallel using descriptor API + SIMD
-#pragma omp parallel for num_threads(Config::Build::NUM_THREADS) schedule(dynamic, 1)
+#pragma omp parallel for num_threads(Config::Preprocess::NUM_THREADS) schedule(dynamic, 1)
     for (size_t batch_id = 0; batch_id < num_batches; ++batch_id)
     {
         const size_t start_desc = batch_id * BATCH_SIZE;
@@ -726,97 +726,102 @@ std::vector<std::string> format_fastq(const char *data, size_t data_size, bool v
 std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
 {
     std::cout << "Processing FASTQ data..." << std::endl;
-    
-    const size_t num_threads = Config::Search::NUM_THREADS;
-    
+
+    const size_t num_threads = Config::Preprocess::NUM_THREADS;
+
     // Phase 1: Single-threaded chunking into FASTQ records
     std::vector<std::pair<size_t, size_t>> fastq_records; // (start, length) pairs
-    
+
     const char *current = data;
     const char *end = data + data_size;
-    int line_num = 0;
-    
-    while (current < end) {
-        const char *record_start = current;
-        
-        // Skip 4 lines for each FASTQ record
-        for (int i = 0; i < 4 && current < end; ++i) {
-            while (current < end && *current != '\n') current++;
-            if (current < end) current++; // Skip \n
-        }
-        
-        // Only store complete 4-line records
-        if (line_num % 4 == 0) {
-            size_t record_length = current - record_start;
-            fastq_records.emplace_back(record_start - data, record_length);
-        }
-        line_num += 4;
-    }
-    
-    std::cout << "Found " << fastq_records.size() << " complete FASTQ records" << std::endl;
-    
-    // Phase 2: Embarrassingly parallel processing
-    std::vector<std::vector<std::string>> thread_results(num_threads);
-    
-    // Distribute records evenly across threads
-    const size_t records_per_thread = (fastq_records.size() + num_threads - 1) / num_threads;
-    
-    #pragma omp parallel for num_threads(num_threads)
-    for (size_t t = 0; t < num_threads; ++t)
+
+    while (current < end)
     {
-        size_t start_record = t * records_per_thread;
-        size_t end_record = std::min(start_record + records_per_thread, fastq_records.size());
-        
-        thread_results[t].reserve(end_record - start_record);
-        
-        // Process assigned records
-        for (size_t r = start_record; r < end_record; ++r) {
-            const auto& [offset, length] = fastq_records[r];
-            
-            // Extract sequence from line 2 of this record
+        const char *record_start = current;
+
+        // Skip 4 lines for each FASTQ record
+        for (int i = 0; i < 4 && current < end; ++i)
+        {
+            while (current < end && *current != '\n')
+                current++;
+            if (current < end)
+                current++; // Skip \n
+        }
+
+        size_t record_length = current - record_start;
+        fastq_records.emplace_back(record_start - data, record_length);
+    }
+
+    std::cout << "Found " << fastq_records.size() << " complete FASTQ records" << std::endl;
+
+    // Phase 2: Fixed chunk size processing
+    std::vector<std::vector<std::string>> thread_results(num_threads);
+
+    // Fixed chunk size (e.g., 1000 records per chunk)
+    const size_t CHUNK_SIZE = Config::Preprocess::CHUNK_SIZE;
+    const size_t num_chunks = (fastq_records.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+#pragma omp parallel for num_threads(num_threads) schedule(dynamic)
+    for (size_t chunk_id = 0; chunk_id < num_chunks; ++chunk_id)
+    {
+        size_t start_record = chunk_id * CHUNK_SIZE;
+        size_t end_record = std::min(start_record + CHUNK_SIZE, fastq_records.size());
+
+        size_t thread_id = omp_get_thread_num();
+
+        // Process this fixed-size chunk
+        for (size_t r = start_record; r < end_record; ++r)
+        {
+            const auto &[offset, length] = fastq_records[r];
+
+            // Extract sequence (same as before)
             const char *record_data = data + offset;
             const char *line_start = record_data;
-            
+
             // Skip to line 2 (sequence line)
-            while (line_start < record_data + length && *line_start != '\n') line_start++;
-            if (line_start < record_data + length) line_start++; // Skip first \n
-            
+            while (line_start < record_data + length && *line_start != '\n')
+                line_start++;
+            if (line_start < record_data + length)
+                line_start++; // Skip first \n
+
             // Find end of sequence line
             const char *line_end = line_start;
-            while (line_end < record_data + length && *line_end != '\n') line_end++;
-            
+            while (line_end < record_data + length && *line_end != '\n')
+                line_end++;
+
             // Build sequence with PREFIX/POSTFIX
             size_t seq_len = line_end - line_start;
             size_t prefix_len = strlen(PREFIX);
             size_t postfix_len = strlen(POSTFIX);
             size_t total_len = prefix_len + seq_len + postfix_len;
-            
+
             std::string result(total_len, '\0');
             char *dest = result.data();
-            
+
             memcpy(dest, PREFIX, prefix_len);
             memcpy(dest + prefix_len, line_start, seq_len);
             memcpy(dest + prefix_len + seq_len, POSTFIX, postfix_len);
-            
-            thread_results[t].emplace_back(std::move(result));
+
+            thread_results[thread_id].emplace_back(std::move(result));
         }
     }
-    
-    // Merge results
+
     size_t total_seqs = 0;
-    for (const auto& chunk : thread_results) {
+    for (const auto &chunk : thread_results)
+    {
         total_seqs += chunk.size();
     }
 
     std::vector<std::string> sequences;
     sequences.reserve(total_seqs);
 
-    for (auto& chunk : thread_results) {
-        sequences.insert(sequences.end(), 
-                        std::make_move_iterator(chunk.begin()),
-                        std::make_move_iterator(chunk.end()));
+    for (auto &chunk : thread_results)
+    {
+        sequences.insert(sequences.end(),
+                         std::make_move_iterator(chunk.begin()),
+                         std::make_move_iterator(chunk.end()));
     }
-    
+
     std::cout << "Successfully processed " << sequences.size() << " sequences (parallel)" << std::endl;
     return sequences;
 }

@@ -114,7 +114,7 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+#pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t q = 0; q < query_embeddings.size(); ++q)
     {
         size_t start_idx = query_start_indices[q];

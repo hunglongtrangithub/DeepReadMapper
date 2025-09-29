@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
         std::vector<float> final_dists;
 
         //* L2 distance reranking
-        int rerank_lim = Config::PostProcess::RERANK_LIM;
+        int rerank_lim = Config::Postprocess::RERANK_LIM;
         if (use_dynamic)
         {
             std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
@@ -241,10 +241,10 @@ int main(int argc, char *argv[])
         // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
-        // auto master_end = std::chrono::high_resolution_clock::now();
-        // auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
-        // std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
-        //           << std::endl;
+        auto master_end = std::chrono::high_resolution_clock::now();
+        auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
+        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
+                  << std::endl;
 
         std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
     }

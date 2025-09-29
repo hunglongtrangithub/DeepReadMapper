@@ -125,7 +125,7 @@ std::vector<std::string> find_sequences(const std::string &ref_genome, const std
     // Start fetching sequences
     std::vector<std::string> results(unique_positions.size());
 
-#pragma omp parallel for schedule(dynamic) num_threads(Config::PostProcess::NUM_THREADS)
+#pragma omp parallel for schedule(dynamic) num_threads(Config::Postprocess::NUM_THREADS)
     for (size_t i = 0; i < unique_positions.size(); ++i)
     {
         size_t pos = unique_positions[i];
@@ -196,7 +196,7 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
     std::vector<std::string> results(unique_positions.size());
 
     //* Use single-threaded for static lookup as each lookup is O(1)
-    // #pragma omp parallel for schedule(dynamic) num_threads(Config::PostProcess::NUM_THREADS)
+    // #pragma omp parallel for schedule(dynamic) num_threads(Config::Postprocess::NUM_THREADS)
     for (size_t i = 0; i < unique_positions.size(); ++i)
     {
         size_t pos = unique_positions[i];
@@ -273,7 +273,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
         throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
     }
 
-#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+#pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t i = 0; i < total_queries; ++i)
     {
         size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
@@ -354,7 +354,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
         throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
     }
 
-#pragma omp parallel for num_threads(Config::PostProcess::NUM_THREADS) schedule(dynamic)
+#pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t i = 0; i < total_queries; ++i)
     {
         size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());

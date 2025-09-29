@@ -7,6 +7,12 @@ namespace Config
 {
     constexpr const bool VERBOSE = true; // Enable verbose logging for debug
 
+    namespace Preprocess
+    {
+        constexpr const int NUM_THREADS = 128; // Number of threads for parallel preprocessing
+        constexpr const int CHUNK_SIZE = 1000; // Number of sequences per chunk during preprocessing. 1 thread handles 1 chunk at a time.
+    }
+
     namespace Inference
     {
         // constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
@@ -42,7 +48,7 @@ namespace Config
         constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
     }
 
-    namespace PostProcess
+    namespace Postprocess
     {
         constexpr const int NUM_THREADS = 128;  // Number of threads for parallel post-processing and reranking
         constexpr const int BATCH_SIZE = 1000; // Number of queries per batch during reranking (deprecated)
