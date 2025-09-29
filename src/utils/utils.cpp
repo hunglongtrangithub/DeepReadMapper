@@ -190,7 +190,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::st
 {
     // Check file extension
     std::string file_ext = std::filesystem::path(file_path).extension().string();
-    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa" && file_ext != ".fastq" && file_ext != ".txt")
+    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa" && file_ext != ".fastq" && file_ext != ".fq" && file_ext != ".txt")
     {
         throw std::runtime_error("Unsupported file format: " + file_ext + ". Only .fna/.fastq/.txt are supported.");
     }
@@ -200,7 +200,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::st
         std::cout << "Detected FASTA file format." << std::endl;
         return preprocess_fasta(file_path, ref_len, stride, lookup_mode);
     }
-    else if (file_ext == ".fastq")
+    else if (file_ext == ".fastq" || file_ext == ".fq")
     {
         std::cout << "Detected FASTQ file format." << std::endl;
 

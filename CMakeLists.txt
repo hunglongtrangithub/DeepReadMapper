@@ -283,7 +283,7 @@ set(GENERATE_REF_SRCS
     src/gen_ref.cpp
 )
 
-add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS})
+add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
 target_link_libraries(gen_ref
     openvino::runtime
@@ -295,7 +295,7 @@ target_link_libraries(gen_ref
 set(SW_SRCS
     src/test_sw_score.cpp
 )
-add_executable(calc_sw ${SW_SRCS} ${UTILS_SRCS})
+add_executable(calc_sw ${SW_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
 target_link_libraries(calc_sw
     openvino::runtime
