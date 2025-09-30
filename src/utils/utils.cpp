@@ -338,6 +338,64 @@ int save_results(const std::vector<std::vector<long int>> &neighbors, const std:
     return save_results(neighbors_size_t, distances, indices_file, distances_file, k, use_npy);
 }
 
+void write_sam(const std::vector<std::string>& final_seqs, 
+               const std::vector<float>& final_scores,
+               const std::vector<std::string>& query_seqs,
+               const std::vector<size_t>& sequence_ids,    // Dense sequences ID, pairwise with final_seqs/final_scores
+               const std::string& ref_name,
+               const int ref_len,
+               size_t k, 
+               const std::string& output_file) {
+    
+    std::ofstream sam_file(output_file);
+    
+    // Write SAM header
+    // @HD: Header line with version and sort order
+    // @SQ: Reference sequence dictionary with sequence name and length
+    sam_file << "@HD\tVN:1.0\tSO:unsorted\n";
+    sam_file << "@SQ\tSN:" << ref_name << "\tLN:" << ref_len << "\n";
+    
+    size_t total_queries = query_seqs.size();
+    
+    for (size_t i = 0; i < total_queries; ++i) {
+        for (size_t j = 0; j < k && (i * k + j) < final_seqs.size(); ++j) {
+            
+            size_t idx = i * k + j;
+            size_t seq_id = sequence_ids[idx];
+            
+             if (i == 0 && j < 5) {
+                std::cout << "Query 0, Cand " << j << ": seq_id=" << seq_id 
+                        << ", genomic_pos=" << (seq_id/2) << std::endl;
+            }
+            // Derive position and reverse complement from ID
+            size_t genomic_pos = seq_id / 2 + 1;  // +1 for 1-based SAM position
+            bool is_reverse = (seq_id % 2 == 1);
+            
+            // FLAG: primary/secondary + reverse complement
+            int flag = (j == 0) ? 0 : 256;  // Primary vs secondary
+            if (is_reverse) flag |= 16;     // Add reverse complement flag
+
+            // Pseudo fields (MapQ, CIGAR)
+            int mapq = 60;  // Pseudo MAPQ
+            // Use pseudo cigar: Assume all matches (M)
+            // TODO: Implement real CIGAR - from SW ranker
+            std::string cigar = std::to_string(query_seqs[i].length()) + "M";
+            
+            sam_file << "S1/" << (i+1) << "/0\t"     // QNAME
+                    << flag << "\t"                  // FLAG (real)
+                    << ref_name << "\t"              // RNAME (real)
+                    << genomic_pos << "\t"           // POS (real, 1-based)
+                    << mapq << "\t"                  // MAPQ (pseudo)
+                    << cigar << "\t"                 // CIGAR (pseudo, based on candidate length)
+                    << "*\t0\t0\t"                   // RNEXT, PNEXT, TLEN
+                    << query_seqs[i] << "\t"         // SEQ
+                    << "*\n";                        // QUAL
+        }
+    }
+    
+    sam_file.close();
+}
+
 int save_config(const std::unordered_map<std::string, ConfigValue> &config, const std::string &folder_path, const std::string &config_file)
 {
     std::filesystem::create_directories(folder_path);

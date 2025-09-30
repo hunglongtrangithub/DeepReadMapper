@@ -177,6 +177,16 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] HNSW Search completed" << std::endl;
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
+        std::cout << "[MAIN] Neighbors found: " << neighbors.size() << std::endl;
+        std::cout << "[MAIN] Number of neighbors/query: " << (neighbors.empty() ? 0 : neighbors[0].size()) << std::endl
+                  << std::endl;
+
+        int total_nei = 0;
+        for (const auto &nei : neighbors)
+            total_nei += nei.size();
+        std::cout << "[MAIN] Total neighbors: " << total_nei << std::endl;
+        std::cout << "[MAIN] Avg neighbors/query: " << (static_cast<float>(total_nei) / neighbors.size()) << std::endl
+                  << std::endl;
 
         // Free-up search memory
         delete alg_hnsw;
@@ -187,16 +197,17 @@ int main(int argc, char *argv[])
         // Declare variables outside the if-else blocks
         std::vector<std::string> final_seqs;
         std::vector<float> final_dists;
+        std::vector<size_t> final_ids;
 
         //* L2 distance reranking
         int rerank_lim = Config::Postprocess::RERANK_LIM;
         if (use_dynamic)
         {
-            std::tie(final_seqs, final_dists) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
+            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
         }
         else
         {
-            std::tie(final_seqs, final_dists) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
+            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
         }
 
         //* Smith-Waterman reranking
@@ -216,30 +227,37 @@ int main(int argc, char *argv[])
                   << std::endl;
 
         // Print first 5 cands of first 3 queries for verification
-        for (size_t i = 0; i < std::min(size_t(3), query_sequences.size()); ++i)
-        {
-            std::cout << "Query " << i << " - reranked candidates:" << std::endl;
-            for (size_t j = 0; j < std::min(size_t(5), size_t(k)); ++j)
-            {
-                size_t idx = i * k + j;
-                std::cout << "  Cand " << j << ": " << final_seqs[idx] << " (Distance: " << final_dists[idx] << ")" << std::endl;
-            }
-        }
+        // for (size_t i = 0; i < std::min(size_t(3), query_sequences.size()); ++i)
+        // {
+        //     std::cout << "Query " << i << " - reranked candidates:" << std::endl;
+        //     for (size_t j = 0; j < std::min(size_t(5), size_t(k)); ++j)
+        //     {
+        //         size_t idx = i * k + j;
+        //         std::cout << "  Cand " << j << ": " << final_seqs[idx] << " (Distance: " << final_dists[idx] << ")" << std::endl;
+        //     }
+        // }
 
         // Save results to disk
         //! This is deprecated
         // TODO: Replace from bin/npy output to SAM format
-        // std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
-        // start_time = std::chrono::high_resolution_clock::now();
+        std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
+        start_time = std::chrono::high_resolution_clock::now();
 
         // bool use_npy = true;
-        // std::string indices_file = output_dir + "/neighbors.npy";
+        // std::string indices_file = output_dir + "/indices.npy";
         // std::string distances_file = output_dir + "/distances.npy";
         // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
 
-        // end_time = std::chrono::high_resolution_clock::now();
-        // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        // std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+        // Print length of final_seqs for verification
+        std::cout << "[MAIN] Total final sequences: " << final_seqs.size() << std::endl;
+        std::cout << "[MAIN] Total query sequences: " << query_sequences.size() << std::endl;
+        std::cout << "[MAIN] Total ids: " << final_ids.size() << std::endl;
+
+        write_sam(final_seqs, final_dists, query_sequences, final_ids, "ref", ref_len, k, sam_file);
+
+        end_time = std::chrono::high_resolution_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);

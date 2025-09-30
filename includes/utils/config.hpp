@@ -52,7 +52,7 @@ namespace Config
     {
         constexpr const int NUM_THREADS = 128;  // Number of threads for parallel post-processing and reranking
         constexpr const int BATCH_SIZE = 1000; // Number of queries per batch during reranking (deprecated)
-        constexpr const int RERANK_LIM = 5;    // Number of candidates to rerank per query (default: 5)
+        constexpr const int RERANK_LIM = 5;    // Number of candidates to rerank per query (default: 5), applied for sparse-index
     }
 
 }

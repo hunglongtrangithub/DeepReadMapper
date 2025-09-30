@@ -88,8 +88,9 @@ std::pair<std::vector<std::string>, std::vector<float>> sw_reranker(const std::v
     return {top_seqs, top_dists};
 }
 
-std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reranker(
+std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> batch_reranker(
     const std::vector<std::string> &all_cand_seqs,
+    const std::vector<size_t> &all_neighbor_indices,
     const std::vector<size_t> &query_start_indices,
     const std::vector<std::vector<float>> &query_embeddings,
     size_t k,
@@ -101,7 +102,7 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
     std::cout << "[BATCH-RERANKER] Finished vectorizing " << all_cand_seqs.size() << " candidate sequences" << std::endl;
 
     // Step 2: Pre-allocate results vector
-    std::vector<std::pair<std::vector<std::string>, std::vector<float>>> results(query_embeddings.size());
+    std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> results(query_embeddings.size());
 
     // Progress tracking variables (thread-safe)
     std::atomic<size_t> completed_queries{0};
@@ -123,7 +124,7 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
 
         if (num_cands == 0)
         {
-            results[q] = {{}, {}};
+            results[q] = {{}, {}, {}};
 
             // Update progress atomically
             size_t current_completed = completed_queries.fetch_add(1) + 1;
@@ -163,16 +164,19 @@ std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reran
 
         std::vector<std::string> top_seqs;
         std::vector<float> top_dists;
+        std::vector<size_t> top_ids;
         top_seqs.reserve(k);
         top_dists.reserve(k);
+        top_ids.reserve(k);
 
         for (size_t i = 0; i < k; ++i)
         {
             top_seqs.push_back(all_cand_seqs[start_idx + indices[i]]);
             top_dists.push_back(l2_dists[indices[i]]);
+            top_ids.push_back(all_neighbor_indices[start_idx + indices[i]]);
         }
 
-        results[q] = {top_seqs, top_dists};
+        results[q] = {top_seqs, top_dists, top_ids};
 
         // Update progress atomically
         size_t current_completed = completed_queries.fetch_add(1) + 1;

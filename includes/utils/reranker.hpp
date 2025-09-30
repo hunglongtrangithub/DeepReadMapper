@@ -24,9 +24,16 @@ std::pair<std::vector<std::string>, std::vector<float>> sw_reranker(const std::v
 
 /// @brief A batch reranker that takes in multiple queries and their candidates, and returns top k candidates for each query using L2 distance as metric
 /// @param all_cand_seqs A vector of vector of candidate sequences for each query
+/// @param all_neighbor_indices A flattened vector of all candidate indices across all queries. This helps to track which candidate belongs to which query.
 /// @param query_start_indices A mapping vector indicating the start index of candidates for each query in all_cand_seqs. This help to track cand-query pairs.
 /// @param query_embeddings A vector of query embeddings
 /// @param k Number of final candidates to return for each query
 /// @param vectorizer A reference to the Vectorizer object for embedding computation
-/// @return
-std::vector<std::pair<std::vector<std::string>, std::vector<float>>> batch_reranker(const std::vector<std::string> &all_cand_seqs, const std::vector<size_t> &query_start_indices, const std::vector<std::vector<float>> &query_embeddings, size_t k, Vectorizer &vectorizer);
+/// @return List of tuples, each containing (sequences, L2 distances, original IDs) for each query
+std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> batch_reranker(
+    const std::vector<std::string> &all_cand_seqs,
+    const std::vector<size_t> &all_neighbor_indices,
+    const std::vector<size_t> &query_start_indices,
+    const std::vector<std::vector<float>> &query_embeddings,
+    size_t k,
+    Vectorizer &vectorizer);

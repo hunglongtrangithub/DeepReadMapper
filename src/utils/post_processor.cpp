@@ -132,9 +132,6 @@ std::vector<std::string> find_sequences(const std::string &ref_genome, const std
         results[i] = find_sequence(ref_genome, pos, ref_len);
     }
 
-    // Remove any empty strings (failed lookups) if needed
-    results.erase(std::remove(results.begin(), results.end(), ""), results.end());
-
     return results;
 }
 
@@ -146,6 +143,28 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
         return {};
     }
 
+    // For dense index (stride==1), do direct lookup without deduplication
+    if (stride == 1)
+    {
+        std::vector<std::string> results;
+        results.reserve(ids.size());
+        
+        for (size_t id : ids)
+        {
+            if (id < ref_seqs.size())
+            {
+                results.push_back(ref_seqs[id]);
+            }
+            else
+            {
+                results.push_back(""); // Handle out of bounds
+            }
+        }
+        
+        return results;
+    }
+
+    // For sparse index (stride>1), use deduplication and range logic
     // Sort and deduplicate ids to minimize redundant fetches
     std::vector<size_t> sorted_ids = ids;
     std::sort(sorted_ids.begin(), sorted_ids.end());
@@ -160,7 +179,6 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
 
         if (actual_position >= ref_seqs.size())
         {
-            // throw std::out_of_range("Find out bound ID in find_sequences: " + std::to_string(actual_position) + " >= " + std::to_string(ref_seqs.size()));
             continue;
         }
 
@@ -195,12 +213,9 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
     // Start fetching sequences
     std::vector<std::string> results(unique_positions.size());
 
-    //* Use single-threaded for static lookup as each lookup is O(1)
-    // #pragma omp parallel for schedule(dynamic) num_threads(Config::Postprocess::NUM_THREADS)
     for (size_t i = 0; i < unique_positions.size(); ++i)
     {
         size_t pos = unique_positions[i];
-        // Add bounds checking in the lookup too
         if (pos < ref_seqs.size())
         {
             results[i] = find_sequence_static(ref_seqs, pos);
@@ -210,9 +225,6 @@ std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs
             results[i] = ""; // Handle out of bounds
         }
     }
-
-    // Remove any empty strings (failed lookups) if needed
-    results.erase(std::remove(results.begin(), results.end(), ""), results.end());
 
     return results;
 }
@@ -236,6 +248,7 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
     }
 }
 
+// TODO: Modify to return IDs too
 // Smith-Waterman version with dynamic lookup (templated)
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
@@ -317,6 +330,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
     return {final_seqs, scores};
 }
 
+// TODO: Modify to return IDs too
 // Smith-Waterman version with static lookup (templated)
 template <typename NeighborType>
 std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
@@ -400,7 +414,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
 
 // L2 distance version with dynamic lookup (templated)
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
+std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
@@ -456,70 +470,75 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic(
     // Early termination for stride == 1 (dense index)
     if (stride == 1)
     {
-        std::cout << "[POST-PROCESS] Identified dense index (stride == 1), skipping reranker" << std::endl;
-
+        std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker" << std::endl;
+    
         std::vector<std::string> final_seqs;
         std::vector<float> final_scores;
+        std::vector<size_t> final_ids;
         final_seqs.reserve(total_queries * k);
         final_scores.reserve(total_queries * k);
-
-        size_t seq_idx = 0;
+        final_ids.reserve(total_queries * k);
+    
         for (size_t i = 0; i < total_queries; ++i)
         {
             size_t start_idx = query_start_indices[i];
             size_t end_idx = query_start_indices[i + 1];
-            size_t actual_cands = end_idx - start_idx;
-
-            // Add available sequences with their corresponding HNSW L2 distances
-            for (size_t j = 0; j < std::min(k, actual_cands) && seq_idx < all_cand_seqs.size(); ++j, ++seq_idx)
+            size_t actual_cands = std::min(k, end_idx - start_idx);
+    
+            // Use start_idx to index into all_cand_seqs properly
+            for (size_t j = 0; j < actual_cands; ++j)
             {
-                final_seqs.push_back(all_cand_seqs[seq_idx]);
-
+                final_seqs.push_back(all_cand_seqs[start_idx + j]);
+                
                 if (j >= distances[i].size())
                 {
                     throw std::runtime_error("Mismatch in distances size for query " + std::to_string(i));
                 }
-
+                
                 final_scores.push_back(distances[i][j]);
+                final_ids.push_back(converted_neighbors[i][j]);
             }
         }
-
-        return {final_seqs, final_scores};
+    
+        return {final_seqs, final_scores, final_ids};
     }
 
     // Step 3: Pass flattened data to batch_reranker
     std::cout << "[POST-PROCESS] Running batched reranker for all queries." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
-    auto batch_results = batch_reranker(all_cand_seqs, query_start_indices, query_embeddings, k, vectorizer);
+    auto batch_results = batch_reranker(all_cand_seqs, all_neighbor_indices, query_start_indices, query_embeddings, k, vectorizer);
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Reranking completed in " << duration.count() << " ms" << std::endl;
 
-    // Step 4: Flatten results in 2 vectors sequences and scores
-    std::cout << "[POST-PROCESS] Format final results into 2 flat arrays (sequences and scores)." << std::endl;
+    // Step 4: Flatten results in 3 vectors
+    std::cout << "[POST-PROCESS] Format final results into 3 flat arrays (sequences, scores, ids)." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> final_seqs;
     std::vector<float> final_scores;
+    std::vector<size_t> final_ids;
     final_seqs.reserve(total_queries * k);
     final_scores.reserve(total_queries * k);
+    final_ids.reserve(total_queries * k);
 
-    for (const auto &[seqs, scores] : batch_results)
+    for (const auto &[seqs, scores, ids] : batch_results)
     {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());
+        final_ids.insert(final_ids.end(), ids.begin(), ids.end());
     }
 
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Result formatting completed in " << duration.count() << " ms" << std::endl;
 
-    return {final_seqs, final_scores};
+    return {final_seqs, final_scores, final_ids};
 }
 
 // L2 distance version with static lookup (templated)
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
+std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,
@@ -552,8 +571,12 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
     for (size_t i = 0; i < total_queries; ++i)
     {
         query_start_indices.push_back(all_neighbor_indices.size());
-
-        size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
+    
+        // For dense index (stride==1), use k directly since no reranking needed
+        // For sparse index (stride>1), use rerank_lim to limit reranking workload
+        size_t num_cands_per_query = (stride == 1) 
+            ? std::min(k, converted_neighbors[i].size())
+            : std::min(rerank_lim, converted_neighbors[i].size());
 
         all_neighbor_indices.insert(all_neighbor_indices.end(),
                                     converted_neighbors[i].begin(),
@@ -574,67 +597,72 @@ std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static(
     std::cout << "[POST-PROCESS] Fetching completed in " << duration.count() << " ms" << std::endl;
 
     // Early termination for stride == 1 (dense index)
-    if (stride == 1)
+        if (stride == 1)
     {
         std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker" << std::endl;
-
+    
         std::vector<std::string> final_seqs;
         std::vector<float> final_scores;
+        std::vector<size_t> final_ids;
         final_seqs.reserve(total_queries * k);
         final_scores.reserve(total_queries * k);
-
-        size_t seq_idx = 0;
+        final_ids.reserve(total_queries * k);
+    
         for (size_t i = 0; i < total_queries; ++i)
         {
             size_t start_idx = query_start_indices[i];
             size_t end_idx = query_start_indices[i + 1];
-            size_t actual_cands = end_idx - start_idx;
-
-            // Add available sequences with their corresponding HNSW L2 distances
-            for (size_t j = 0; j < std::min(k, actual_cands) && seq_idx < all_cand_seqs.size(); ++j, ++seq_idx)
+            size_t actual_cands = std::min(k, end_idx - start_idx);
+    
+            // Use start_idx to index into all_cand_seqs properly
+            for (size_t j = 0; j < actual_cands; ++j)
             {
-                final_seqs.push_back(all_cand_seqs[seq_idx]);
-
+                final_seqs.push_back(all_cand_seqs[start_idx + j]);
+                
                 if (j >= distances[i].size())
                 {
                     throw std::runtime_error("Mismatch in distances size for query " + std::to_string(i));
                 }
-
+                
                 final_scores.push_back(distances[i][j]);
+                final_ids.push_back(converted_neighbors[i][j]);
             }
         }
-
-        return {final_seqs, final_scores};
+    
+        return {final_seqs, final_scores, final_ids};
     }
 
     // Step 3: Pass flattened data to a batch_reranker (for stride > 1)
     std::cout << "[POST-PROCESS] Running batched reranker for all queries." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
-    auto batch_results = batch_reranker(all_cand_seqs, query_start_indices, query_embeddings, k, vectorizer);
+    auto batch_results = batch_reranker(all_cand_seqs, all_neighbor_indices, query_start_indices, query_embeddings, k, vectorizer);
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Reranking completed in " << duration.count() << " ms" << std::endl;
 
-    // Step 4: Flatten results in 2 vectors sequences and scores
-    std::cout << "[POST-PROCESS] Format final results into 2 flat arrays (sequences and scores)." << std::endl;
+    // Step 4: Flatten results in 3 vectors
+    std::cout << "[POST-PROCESS] Format final results into 3 flat arrays (sequences, scores, ids)." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> final_seqs;
     std::vector<float> final_scores;
+    std::vector<size_t> final_ids;
     final_seqs.reserve(total_queries * k);
     final_scores.reserve(total_queries * k);
+    final_ids.reserve(total_queries * k);
 
-    for (const auto &[seqs, scores] : batch_results)
+    for (const auto &[seqs, scores, ids] : batch_results)
     {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());
+        final_ids.insert(final_ids.end(), ids.begin(), ids.end());
     }
 
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Result formatting completed in " << duration.count() << " ms" << std::endl;
 
-    return {final_seqs, final_scores};
+    return {final_seqs, final_scores, final_ids};
 }
 
 // Explicit template instantiations for different neighbor types
@@ -647,8 +675,8 @@ template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_d
 template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
 template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
 
-template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
-template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
 
-template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
-template std::pair<std::vector<std::string>, std::vector<float>> post_process_l2_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);

@@ -69,6 +69,24 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
 
 int save_results(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances, const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy = true);
 
+/// @brief Write results to a SAM file. Normalize position to 1-indexed.
+/// @param final_seqs Vector of final aligned sequences.
+/// @param final_scores Vector of final alignment scores.
+/// @param query_seqs Vector of original query sequences.
+/// @param sequence_ids Vector of original sequence IDs corresponding to final_seqs/final_scores.
+/// @param ref_name Name of the reference sequence.
+/// @param ref_len Length of the reference sequence.
+/// @param k Number of alignments per query.
+/// @param output_file Output SAM file path.
+void write_sam(const std::vector<std::string>& final_seqs, 
+               const std::vector<float>& final_scores,
+               const std::vector<std::string>& query_seqs,
+               const std::vector<size_t>& sequence_ids,
+               const std::string& ref_name,
+               const int ref_len,
+               size_t k, 
+               const std::string& output_file);
+
 using ConfigValue = std::variant<size_t, float, std::string>;
 
 /// @brief Save index config to a text file.
