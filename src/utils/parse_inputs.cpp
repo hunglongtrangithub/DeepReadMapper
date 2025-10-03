@@ -513,6 +513,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride, lookup_mode);
 
     //* Use multi-threaded version
+    //TODO: Fix bug in multi-threaded version
     // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);
 
     // Step 3: Cleanup
@@ -839,15 +840,19 @@ std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[FASTQ] File read time: " << duration.count() << " ms" << std::endl;
 
+    
     // Step 2: Process data
-    // auto sequences = format_fastq(data, data_size, true);
+    start_time = std::chrono::high_resolution_clock::now();
+
+    auto sequences = format_fastq(data, data_size, true);
 
     //* Format with multi-threads
-    start_time = std::chrono::high_resolution_clock::now();
-    auto sequences = format_fastq_mp(data, data_size);
+    // TODO: Fix bug in multi-threaded version
+    // auto sequences = format_fastq_mp(data, data_size);
+
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    std::cout << "[FASTQ] Formatting time (parallel): " << duration.count() << " ms" << std::endl;
+    std::cout << "[FASTQ] Formatting time: " << duration.count() << " ms" << std::endl;
 
     // Step 3: Cleanup
 #ifdef __linux__
