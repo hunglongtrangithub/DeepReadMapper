@@ -285,14 +285,17 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
             std::string rev = reverse_complement(window);
             std::string forward;
             std::string reverse;
-            
-            if (!lookup_mode) {
+
+            if (!lookup_mode)
+            {
                 forward.reserve(2 + ref_len);
                 forward.append(PREFIX).append(window).append(POSTFIX);
-                
+
                 reverse.reserve(2 + ref_len);
                 reverse.append(PREFIX).append(rev).append(POSTFIX);
-            } else {
+            }
+            else
+            {
                 forward = window;
                 reverse = rev;
             }
@@ -513,7 +516,7 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride, lookup_mode);
 
     //* Use multi-threaded version
-    //TODO: Fix bug in multi-threaded version
+    // TODO: Fix bug in multi-threaded version
     // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);
 
     // Step 3: Cleanup
@@ -648,25 +651,30 @@ std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::u
 }
 
 // FASTQ data processing
-std::vector<std::string> format_fastq(const char *data, size_t data_size, bool verbose) {
-    if (verbose) {
+std::pair<std::vector<std::string>, std::vector<std::string>> format_fastq(const char *data, size_t data_size, bool verbose)
+{
+    if (verbose)
+    {
         std::cout << "Processing FASTQ data..." << std::endl;
     }
-    
+
     // Count newlines to estimate sequences
     size_t estimated_seqs = std::count(data, data + data_size, '\n') / 4;
-    
+
     std::vector<std::string> sequences;
+    std::vector<std::string> query_ids;
     sequences.reserve(estimated_seqs);
-    
+    query_ids.reserve(estimated_seqs);
+
     const char *current = data;
     const char *end = data + data_size;
     const size_t prefix_len = strlen(PREFIX);
     const size_t postfix_len = strlen(POSTFIX);
-    
+
     // Setup progress bar only if verbose
     std::unique_ptr<indicators::ProgressBar> progressBar;
-    if (verbose) {
+    if (verbose)
+    {
         indicators::show_console_cursor(false);
         progressBar = std::make_unique<indicators::ProgressBar>(
             indicators::option::BarWidth{80},
@@ -675,56 +683,84 @@ std::vector<std::string> format_fastq(const char *data, size_t data_size, bool v
             indicators::option::ShowRemainingTime{true});
         progressBar->set_progress(0);
     }
-    
+
     int line_num = 0;
     size_t bytes_processed = 0;
     size_t last_progress_update = 0;
-    
-    while (current < end) {
+    const char *header_start = nullptr;
+
+    while (current < end)
+    {
         const char *line_start = current;
-        
+
         // Find line end
-        while (current < end && *current != '\n') current++;
-        
-        if (line_num % 4 == 1) {
+        while (current < end && *current != '\n')
+            current++;
+
+        // Line 0: Header/ID (starts with @)
+        if (line_num % 4 == 0)
+        {
+            header_start = line_start;
+            // Skip the '@' character
+            if (header_start < current && *header_start == '@')
+            {
+                header_start++;
+            }
+            // Extract query ID (everything until first space, tab, or slash)
+
+            // Remove trailing newline if present (meaning forward/reverse indicator)
+            const char *id_end = header_start;
+            while (id_end < current && *id_end != ' ' && *id_end != '\t' && *id_end != '/')
+            {
+                id_end++;
+            }
+            query_ids.emplace_back(header_start, id_end - header_start);
+        }
+        // Line 1: Sequence
+        else if (line_num % 4 == 1)
+        {
             size_t seq_len = current - line_start;
             size_t total_len = prefix_len + seq_len + postfix_len;
-            
+
             // Single allocation + memcpy (fastest)
             std::string result(total_len, '\0');
             char *dest = result.data();
-            
+
             memcpy(dest, PREFIX, prefix_len);
             memcpy(dest + prefix_len, line_start, seq_len);
             memcpy(dest + prefix_len + seq_len, POSTFIX, postfix_len);
-            
+
             sequences.emplace_back(std::move(result));
         }
-        
-        if (current < end) current++; // Skip \n
+
+        if (current < end)
+            current++; // Skip \n
         line_num++;
-        
+
         // Update progress bar only if verbose
-        if (verbose && progressBar) {
+        if (verbose && progressBar)
+        {
             bytes_processed = current - data;
-            if (bytes_processed - last_progress_update > 1024 * 1024) {
+            if (bytes_processed - last_progress_update > 1024 * 1024)
+            {
                 progressBar->set_progress((bytes_processed * 100) / data_size);
                 last_progress_update = bytes_processed;
             }
         }
     }
-    
-    if (verbose && progressBar) {
+
+    if (verbose && progressBar)
+    {
         progressBar->set_progress(100);
         indicators::show_console_cursor(true);
         std::cout << "Successfully processed " << sequences.size() << " sequences" << std::endl;
     }
-    
-    return sequences;
+
+    return {sequences, query_ids};
 }
 
 // FASTQ data processing using OpenMP for parallel processing
-std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
+std::pair<std::vector<std::string>, std::vector<std::string>> format_fastq_mp(const char *data, size_t data_size)
 {
     std::cout << "Processing FASTQ data..." << std::endl;
 
@@ -756,7 +792,8 @@ std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
     std::cout << "Found " << fastq_records.size() << " complete FASTQ records" << std::endl;
 
     // Phase 2: Fixed chunk size processing
-    std::vector<std::vector<std::string>> thread_results(num_threads);
+    std::vector<std::vector<std::string>> thread_seqs(num_threads);
+    std::vector<std::vector<std::string>> thread_ids(num_threads);
 
     // Fixed chunk size (e.g., 1000 records per chunk)
     const size_t CHUNK_SIZE = Config::Preprocess::CHUNK_SIZE;
@@ -775,11 +812,21 @@ std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
         {
             const auto &[offset, length] = fastq_records[r];
 
-            // Extract sequence (same as before)
             const char *record_data = data + offset;
-            const char *line_start = record_data;
+
+            // Extract query ID from line 0 (header)
+            const char *header_start = record_data;
+            if (*header_start == '@')
+                header_start++; // Skip '@'
+
+            const char *header_end = header_start;
+            while (header_end < record_data + length && *header_end != '\n' && *header_end != ' ' && *header_end != '\t' && *header_end != '/')
+                header_end++;
+
+            thread_ids[thread_id].emplace_back(header_start, header_end - header_start);
 
             // Skip to line 2 (sequence line)
+            const char *line_start = record_data;
             while (line_start < record_data + length && *line_start != '\n')
                 line_start++;
             if (line_start < record_data + length)
@@ -803,32 +850,41 @@ std::vector<std::string> format_fastq_mp(const char *data, size_t data_size)
             memcpy(dest + prefix_len, line_start, seq_len);
             memcpy(dest + prefix_len + seq_len, POSTFIX, postfix_len);
 
-            thread_results[thread_id].emplace_back(std::move(result));
+            thread_seqs[thread_id].emplace_back(std::move(result));
         }
     }
 
     size_t total_seqs = 0;
-    for (const auto &chunk : thread_results)
+    for (const auto &chunk : thread_seqs)
     {
         total_seqs += chunk.size();
     }
 
     std::vector<std::string> sequences;
+    std::vector<std::string> query_ids;
     sequences.reserve(total_seqs);
+    query_ids.reserve(total_seqs);
 
-    for (auto &chunk : thread_results)
+    for (auto &chunk : thread_seqs)
     {
         sequences.insert(sequences.end(),
                          std::make_move_iterator(chunk.begin()),
                          std::make_move_iterator(chunk.end()));
     }
 
+    for (auto &chunk : thread_ids)
+    {
+        query_ids.insert(query_ids.end(),
+                         std::make_move_iterator(chunk.begin()),
+                         std::make_move_iterator(chunk.end()));
+    }
+
     std::cout << "Successfully processed " << sequences.size() << " sequences (parallel)" << std::endl;
-    return sequences;
+    return {sequences, query_ids};
 }
 
 // Combined wrapper function that handles both I/O and processing
-std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
+std::pair<std::vector<std::string>, std::vector<std::string>> preprocess_fastq(const std::string &fastq_file)
 {
     std::unique_ptr<char[]> buffer;
     int fd = -1;
@@ -840,15 +896,14 @@ std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[FASTQ] File read time: " << duration.count() << " ms" << std::endl;
 
-    
     // Step 2: Process data
     start_time = std::chrono::high_resolution_clock::now();
 
-    auto sequences = format_fastq(data, data_size, true);
+    auto [sequences, query_ids] = format_fastq(data, data_size, true);
 
     //* Format with multi-threads
     // TODO: Fix bug in multi-threaded version
-    // auto sequences = format_fastq_mp(data, data_size);
+    // auto [sequences, query_ids] = format_fastq_mp(data, data_size);
 
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -863,5 +918,5 @@ std::vector<std::string> preprocess_fastq(const std::string &fastq_file)
     }
 #endif
 
-    return sequences;
+    return {sequences, query_ids};
 }

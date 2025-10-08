@@ -213,7 +213,6 @@ int main(int argc, char *argv[])
     const std::string index_file = index_prefix + "/" + basename + ".index";
 
     const size_t ref_len = static_cast<size_t>(std::stoul(argv[3]));
-
     const size_t stride = (argc >= 5) ? static_cast<size_t>(std::stoul(argv[4])) : 1;
 
     // Parse optional parameters with defaults
@@ -232,7 +231,7 @@ int main(int argc, char *argv[])
 
     // Load input data
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    auto [sequences, labels] = read_file(ref_file, ref_len, stride);
+    auto [sequences, labels] = read_fasta_file(ref_file, ref_len, stride);
 
     if (sequences.empty())
     {
@@ -263,7 +262,7 @@ int main(int argc, char *argv[])
     };
 
     save_config(config, index_prefix);
-    save_id_map(labels, index_prefix);
+    // save_id_map(labels, index_prefix);
     std::cout << "[BUILD INDEX] Config saved successfully." << std::endl;
 
     std::cout << "[BUILD INDEX] Building FAISS IndexHNSWPQ..." << std::endl;

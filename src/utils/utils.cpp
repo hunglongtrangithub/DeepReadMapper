@@ -180,15 +180,47 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
     return sequences;
 }
 
-/// @brief Wrapper function for reading input sequences efficiently.
-/// @param file_path Path to the input file (FASTA, FASTQ, or plain text).
-/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
-/// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
-/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false).
-/// @return Vector of input sequences as strings.
-std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len, size_t stride, bool lookup_mode)
+/// @brief Wrapper function for reading FASTA/FNA files
+/// @param file_path Path to the FASTA file
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
+/// @param stride Length of non-overlap part between 2 windows
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences
+/// @return Pair of (sequences, positional labels as size_t)
+std::pair<std::vector<std::string>, std::vector<size_t>> read_fasta_file(const std::string &file_path, size_t ref_len, size_t stride, bool lookup_mode)
 {
-    // Check file extension
+    std::string file_ext = std::filesystem::path(file_path).extension().string();
+    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa")
+    {
+        throw std::runtime_error("Expected FASTA format (.fna/.fasta/.fa), got: " + file_ext);
+    }
+    
+    std::cout << "Detected FASTA file format." << std::endl;
+    return preprocess_fasta(file_path, ref_len, stride, lookup_mode);
+}
+
+/// @brief Wrapper function for reading FASTQ files
+/// @param file_path Path to the FASTQ file
+/// @return Pair of (sequences with PREFIX/POSTFIX, query IDs from headers)
+std::pair<std::vector<std::string>, std::vector<std::string>> read_fastq_file(const std::string &file_path)
+{
+    std::string file_ext = std::filesystem::path(file_path).extension().string();
+    if (file_ext != ".fastq" && file_ext != ".fq")
+    {
+        throw std::runtime_error("Expected FASTQ format (.fastq/.fq), got: " + file_ext);
+    }
+    
+    std::cout << "Detected FASTQ file format." << std::endl;
+    return preprocess_fastq(file_path);
+}
+
+/// @brief Generic wrapper function for reading input sequences (auto-detects format)
+/// @param file_path Path to the input file (FASTA, FASTQ, or plain text)
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only)
+/// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1)
+/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false)
+/// @return Pair of (sequences, query IDs). For FASTA/TXT returns empty IDs, for FASTQ returns actual IDs
+std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const std::string &file_path, size_t ref_len, size_t stride, bool lookup_mode)
+{
     std::string file_ext = std::filesystem::path(file_path).extension().string();
     if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa" && file_ext != ".fastq" && file_ext != ".fq" && file_ext != ".txt")
     {
@@ -198,24 +230,21 @@ std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::st
     if (file_ext == ".fna" || file_ext == ".fasta" || file_ext == ".fa")
     {
         std::cout << "Detected FASTA file format." << std::endl;
-        return preprocess_fasta(file_path, ref_len, stride, lookup_mode);
+        auto [seqs, labels] = preprocess_fasta(file_path, ref_len, stride, lookup_mode);
+        // For FASTA in search context, we don't need labels, return empty IDs
+        return {seqs, std::vector<std::string>()};
     }
     else if (file_ext == ".fastq" || file_ext == ".fq")
     {
         std::cout << "Detected FASTQ file format." << std::endl;
-
-        // For FASTQ, we only return sequences without labels
-        return {preprocess_fastq(file_path), std::vector<size_t>{}};
+        return preprocess_fastq(file_path);  // Returns (sequences, query_ids)
     }
 
     std::cout << "Detected plain text file format." << std::endl;
-
-// For .txt or other plain text files, use mmap if available
-// Also return empty labels vector
 #ifdef __linux__
-    return {read_txt_mmap(file_path), std::vector<size_t>{}};
+    return {read_txt_mmap(file_path), std::vector<std::string>()};
 #else
-    return {read_txt_default(file_path), std::vector<size_t>{}};
+    return {read_txt_default(file_path), std::vector<std::string>()};
 #endif
 }
 
@@ -341,7 +370,8 @@ int save_results(const std::vector<std::vector<long int>> &neighbors, const std:
 void write_sam(const std::vector<std::string>& final_seqs, 
                const std::vector<float>& final_scores,
                const std::vector<std::string>& query_seqs,
-               const std::vector<size_t>& sequence_ids,    // Dense sequences ID, pairwise with final_seqs/final_scores
+               const std::vector<std::string>& query_ids,      // Query IDs from FASTQ headers
+               const std::vector<size_t>& sequence_ids,        // Dense sequences ID, pairwise with final_seqs/final_scores
                const std::string& ref_name,
                const int ref_len,
                size_t k, 
@@ -355,15 +385,25 @@ void write_sam(const std::vector<std::string>& final_seqs,
     sam_file << "@HD\tVN:1.0\tSO:unsorted\n";
     sam_file << "@SQ\tSN:" << ref_name << "\tLN:" << ref_len << "\n";
     
+    // Calculate PREFIX/POSTFIX lengths for stripping
+    const size_t prefix_len = strlen(PREFIX);
+    const size_t postfix_len = strlen(POSTFIX);
+    
     size_t total_queries = query_seqs.size();
     
     for (size_t i = 0; i < total_queries; ++i) {
+        // Strip PREFIX and POSTFIX from query sequence for SAM output
+        std::string clean_query = query_seqs[i];
+        if (clean_query.length() > prefix_len + postfix_len) {
+            clean_query = clean_query.substr(prefix_len, clean_query.length() - prefix_len - postfix_len);
+        }
+        
         for (size_t j = 0; j < k && (i * k + j) < final_seqs.size(); ++j) {
             
             size_t idx = i * k + j;
             size_t seq_id = sequence_ids[idx];
             
-             if (i == 0 && j < 5) {
+            if (i == 0 && j < 5) {
                 std::cout << "Query 0, Cand " << j << ": seq_id=" << seq_id 
                         << ", genomic_pos=" << (seq_id/2) << std::endl;
             }
@@ -379,16 +419,21 @@ void write_sam(const std::vector<std::string>& final_seqs,
             int mapq = 60;  // Pseudo MAPQ
             // Use pseudo cigar: Assume all matches (M)
             // TODO: Implement real CIGAR - from SW ranker
-            std::string cigar = std::to_string(query_seqs[i].length()) + "M";
+            std::string cigar = std::to_string(clean_query.length()) + "M";
             
-            sam_file << "S1/" << (i+1) << "/0\t"     // QNAME
+            // Use actual query ID from FASTQ if available, otherwise generate one
+            std::string qname = (i < query_ids.size() && !query_ids[i].empty()) 
+                                ? query_ids[i] 
+                                : "S1/" + std::to_string(i+1) + "/0";
+            
+            sam_file << qname << "\t"                // QNAME (real from FASTQ)
                     << flag << "\t"                  // FLAG (real)
                     << ref_name << "\t"              // RNAME (real)
                     << genomic_pos << "\t"           // POS (real, 1-based)
                     << mapq << "\t"                  // MAPQ (pseudo)
-                    << cigar << "\t"                 // CIGAR (pseudo, based on candidate length)
+                    << cigar << "\t"                 // CIGAR (pseudo, based on cleaned query length)
                     << "*\t0\t0\t"                   // RNEXT, PNEXT, TLEN
-                    << query_seqs[i] << "\t"         // SEQ
+                    << clean_query << "\t"           // SEQ (cleaned - no PREFIX/POSTFIX)
                     << "*\n";                        // QUAL
         }
     }

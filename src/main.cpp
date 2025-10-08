@@ -76,9 +76,12 @@ int main(int argc, char *argv[])
         // Read sequences from file
         std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
         std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
-
+        
+        // Main Pipeline = FASTQ + Vectorize + HNSW Search + Post-process + Output
+        int main_pipeline_time = 0; // ms
         auto start_time = std::chrono::high_resolution_clock::now();
-        auto [query_sequences, __] = read_file(query_seqs_file);
+
+        auto [query_sequences, query_ids] = read_file(query_seqs_file);
 
         if (query_sequences.empty())
         {
@@ -88,6 +91,8 @@ int main(int argc, char *argv[])
 
         auto query_end_time = std::chrono::high_resolution_clock::now();
         auto query_duration = std::chrono::duration_cast<std::chrono::milliseconds>(query_end_time - start_time);
+
+        main_pipeline_time += query_duration.count();
 
         // analyze_input(query_sequences);
 
@@ -145,7 +150,7 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        // Initialize vectorizer
+        // Initialize
         std::cout << "[MAIN] INFERENCE STEP" << std::endl;
         Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
 
@@ -156,6 +161,8 @@ int main(int argc, char *argv[])
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        main_pipeline_time += duration.count();
 
         // Print results
         std::cout << "[MAIN] Inference completed" << std::endl;
@@ -174,6 +181,8 @@ int main(int argc, char *argv[])
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        main_pipeline_time += duration.count();
         std::cout << "[MAIN] HNSW Search completed" << std::endl;
         std::cout << "[MAIN] Search time: " << duration.count() << " ms" << std::endl
                   << std::endl;
@@ -222,6 +231,8 @@ int main(int argc, char *argv[])
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        main_pipeline_time += duration.count();
         std::cout << "[MAIN] Post-processing completed" << std::endl;
         std::cout << "[MAIN] Post-processing time: " << duration.count() << " ms" << std::endl
                   << std::endl;
@@ -251,18 +262,27 @@ int main(int argc, char *argv[])
         // Print length of final_seqs for verification
         std::cout << "[MAIN] Total final sequences: " << final_seqs.size() << std::endl;
         std::cout << "[MAIN] Total query sequences: " << query_sequences.size() << std::endl;
-        std::cout << "[MAIN] Total ids: " << final_ids.size() << std::endl;
+        std::cout << "[MAIN] Total query IDs: " << query_ids.size() << std::endl;
+        std::cout << "[MAIN] Total candidate IDs: " << final_ids.size() << std::endl;
 
-        write_sam(final_seqs, final_dists, query_sequences, final_ids, "ref", ref_len, k, sam_file);
+        write_sam(final_seqs, final_dists, query_sequences, query_ids, final_ids, "ref", ref_len, k, sam_file);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        main_pipeline_time += duration.count();
         std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);
-        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl
-                  << std::endl;
+        std::cout << "[MAIN] Finished processing file: " << query_seqs_file << std::endl;
+        std::cout << "[MAIN] Index: " << index_prefix << std::endl;
+        std::cout << "[MAIN] Total pipeline time: " << master_duration.count() << " ms" << std::endl;
+
+        // Convert to seconds
+        main_pipeline_time /= 1000;
+        std::cout << "[MAIN] Main steps time: " << main_pipeline_time << " s" << std::endl;
+        std::cout << "[MAIN] Steps: FASTQ loading + Inference + Search + Post-process + Output" << std::endl;
 
         std::cout << "=== Pipeline Completed Successfully! ===" << std::endl;
     }

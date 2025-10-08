@@ -10,7 +10,8 @@ int main(int argc, char *argv[])
     std::string sequences_file = argv[1];
     std::string output_file = (argc >= 3) ? argv[2] : "embeddings.npy";
 
-    auto [sequences, _] = read_file(sequences_file);
+    // read_file now returns (sequences, query_ids), we only need sequences
+    auto [sequences, query_ids] = read_file(sequences_file);
 
     // Default config
     Vectorizer vectorizer;

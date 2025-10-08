@@ -105,16 +105,16 @@ std::pair<const char *, size_t> read_fastq(const std::string &fastq_file, std::u
 /// @param data Pointer to file data
 /// @param data_size Size of data
 /// @param verbose If true, print progressbar
-/// @return Vector of formatted sequences with PREFIX and POSTFIX tags
-std::vector<std::string> format_fastq(const char *data, size_t data_size, bool verbose = true);
+/// @return Pair of (sequences with PREFIX/POSTFIX tags, query IDs from FASTQ headers)
+std::pair<std::vector<std::string>, std::vector<std::string>> format_fastq(const char *data, size_t data_size, bool verbose = true);
 
 /// @brief Process FASTQ data using OpenMP for parallel processing (separated from I/O)
 /// @param data Pointer to file data
 /// @param data_size Size of data
-/// @return Vector of formatted sequences with PREFIX and POSTFIX tags
-std::vector<std::string> format_fastq_mp(const char *data, size_t data_size);
+/// @return Pair of (sequences with PREFIX/POSTFIX tags, query IDs from FASTQ headers)
+std::pair<std::vector<std::string>, std::vector<std::string>> format_fastq_mp(const char *data, size_t data_size);
 
 /// @brief Wrapper function for FASTQ preprocessing that chooses optimal method
 /// @param fastq_file Path to the FASTQ file
-/// @return Vector of formatted sequences with PREFIX and POSTFIX tags
-std::vector<std::string> preprocess_fastq(const std::string &fastq_file);
+/// @return Pair of (sequences with PREFIX/POSTFIX tags, query IDs from FASTQ headers)
+std::pair<std::vector<std::string>, std::vector<std::string>> preprocess_fastq(const std::string &fastq_file);

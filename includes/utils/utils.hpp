@@ -32,14 +32,17 @@ std::vector<std::string> read_txt_default(const std::string &file_path);
 std::vector<std::string> read_txt_mmap(const std::string &file_path);
 #endif
 
-// Add this to your header:
-/// @brief Wrapper function for reading input sequences efficiently.
-/// @param file_path Path to the input file
-/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX (for FASTA only).
-/// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1).
-/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false).
-/// @return Vector of input sequences as strings
-std::pair<std::vector<std::string>, std::vector<size_t>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);
+/// @brief Read FASTA/FNA file (for indexing)
+/// @return Pair of (sequences, positional labels as size_t)
+std::pair<std::vector<std::string>, std::vector<size_t>> read_fasta_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);
+
+/// @brief Read FASTQ file (for searching)
+/// @return Pair of (sequences, query IDs from headers)
+std::pair<std::vector<std::string>, std::vector<std::string>> read_fastq_file(const std::string &file_path);
+
+/// @brief Generic file reader (auto-detects format)
+/// @return Pair of (sequences, query IDs). For FASTA/TXT returns empty IDs, for FASTQ returns actual IDs
+std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);
 
 /// @brief Analyze input sequences and print statistics.
 /// @param sequences Vector of input sequences as strings.
@@ -81,7 +84,8 @@ int save_results(const std::vector<std::vector<long int>> &neighbors, const std:
 void write_sam(const std::vector<std::string>& final_seqs, 
                const std::vector<float>& final_scores,
                const std::vector<std::string>& query_seqs,
-               const std::vector<size_t>& sequence_ids,
+               const std::vector<std::string>& query_ids,      // Query IDs from FASTQ headers
+               const std::vector<size_t>& sequence_ids,        // Candidate sequence IDs
                const std::string& ref_name,
                const int ref_len,
                size_t k, 
