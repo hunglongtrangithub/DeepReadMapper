@@ -1,10 +1,14 @@
 #include "reranker.hpp"
 
-std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vector<std::string> &cand_seqs, const std::string &query_seq, size_t k)
+std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> sw_reranker(
+    const std::vector<std::string> &cand_seqs,
+    const std::vector<size_t> &cand_ids,
+    const std::string &query_seq,
+    size_t k)
 {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0)
-        return {{}, {}};
+        return {{}, {}, {}};
 
     // Step 1: Compute SW scores for all candidates
     std::vector<int> scores(num_cands, 0);
@@ -17,6 +21,7 @@ std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vec
     // Step 2: Sort candidates by score
     std::vector<std::string> top_seqs;
     std::vector<int> top_scores;
+    std::vector<size_t> top_ids;
 
     if (num_cands < k)
     {
@@ -25,6 +30,7 @@ std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vec
 
     top_seqs.reserve(k);
     top_scores.reserve(k);
+    top_ids.reserve(k);
 
     std::vector<size_t> indices(num_cands);
     std::iota(indices.begin(), indices.end(), 0);
@@ -33,17 +39,18 @@ std::pair<std::vector<std::string>, std::vector<int>> sw_reranker(const std::vec
                       [&scores](size_t i1, size_t i2)
                       { return scores[i1] > scores[i2]; });
 
-    // Step 3: Collect top k sequences and scores
+    // Step 3: Collect top k sequences, scores, and IDs
     for (size_t i = 0; i < k; ++i)
     {
         top_seqs.push_back(cand_seqs[indices[i]]);
         top_scores.push_back(scores[indices[i]]);
+        top_ids.push_back(cand_ids[indices[i]]);
     }
 
-    return {top_seqs, top_scores};
+    return {top_seqs, top_scores, top_ids};
 }
 
-std::pair<std::vector<std::string>, std::vector<float>> sw_reranker(const std::vector<std::string> &cand_seqs, const std::vector<float> &query_embedding, size_t k, Vectorizer &vectorizer)
+std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::vector<std::string> &cand_seqs, const std::vector<float> &query_embedding, size_t k, Vectorizer &vectorizer)
 {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0)

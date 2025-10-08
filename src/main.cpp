@@ -207,6 +207,7 @@ int main(int argc, char *argv[])
         std::vector<std::string> final_seqs;
         std::vector<float> final_dists;
         std::vector<size_t> final_ids;
+        std::vector<int> final_sw_scores; // For SW reranking
 
         //* L2 distance reranking
         int rerank_lim = Config::Postprocess::RERANK_LIM;
@@ -222,11 +223,11 @@ int main(int argc, char *argv[])
         //* Smith-Waterman reranking
         // if (use_dynamic)
         // {
-        //     std::tie(final_seqs, final_scores) = post_process_sw_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, rerank_lim);
+        //     std::tie(final_seqs, final_sw_scores, final_ids) = post_process_sw_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, rerank_lim);
         // }
         // else
         // {
-        //     std::tie(final_seqs, final_scores) = post_process_sw_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, rerank_lim);
+        //     std::tie(final_seqs, final_sw_scores, final_ids) = post_process_sw_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, rerank_lim);
         // }
 
         end_time = std::chrono::high_resolution_clock::now();

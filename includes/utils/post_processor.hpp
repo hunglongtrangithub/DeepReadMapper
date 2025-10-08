@@ -75,9 +75,9 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @param k Number of final candidates to return per query
 /// @param rerank_lim top-k candidates passed to reranker (default: 5)
-/// @return Pair of vectors: 1st is sequences, 2nd is Smith-Waterman scores
+/// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
+std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
@@ -93,9 +93,9 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @param k Number of final candidates to return per query
 /// @param rerank_lim top-k candidates passed to reranker (default: 5)
-/// @return Pair of vectors: 1st is sequences, 2nd is Smith-Waterman scores
+/// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
+std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,

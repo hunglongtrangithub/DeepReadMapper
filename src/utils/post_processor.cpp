@@ -248,10 +248,8 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
     }
 }
 
-// TODO: Modify to return IDs too
-// Smith-Waterman version with dynamic lookup (templated)
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
+std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
@@ -269,6 +267,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
     // Pre-allocate results for each query
     std::vector<std::vector<std::string>> all_final_seqs(total_queries);
     std::vector<std::vector<int>> all_scores(total_queries);
+    std::vector<std::vector<size_t>> all_ids(total_queries);
 
     // Thread-safe progress tracking
     std::atomic<size_t> completed_queries(0);
@@ -296,11 +295,12 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
         std::vector<std::string> query_cand_seqs = find_sequences(ref_genome, query_neighbors, ref_len, stride);
 
         // Rerank candidates using Smith-Waterman
-        auto [top_seqs, top_scores] = sw_reranker(query_cand_seqs, query_seqs[i], k);
+        auto [top_seqs, top_scores, top_ids] = sw_reranker(query_cand_seqs, query_neighbors, query_seqs[i], k);
 
         // Store results for this query
         all_final_seqs[i] = std::move(top_seqs);
         all_scores[i] = std::move(top_scores);
+        all_ids[i] = std::move(top_ids);
 
         // Update progress bar (thread-safe)
         size_t current_completed = completed_queries.fetch_add(1) + 1;
@@ -318,22 +318,23 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic(
     // Flatten results
     std::vector<std::string> final_seqs;
     std::vector<int> scores;
+    std::vector<size_t> final_ids;
     final_seqs.reserve(total_queries * k);
     scores.reserve(total_queries * k);
+    final_ids.reserve(total_queries * k);
 
     for (size_t i = 0; i < total_queries; ++i)
     {
         final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
         scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
+        final_ids.insert(final_ids.end(), all_ids[i].begin(), all_ids[i].end());
     }
 
-    return {final_seqs, scores};
+    return {final_seqs, scores, final_ids};
 }
 
-// TODO: Modify to return IDs too
-// Smith-Waterman version with static lookup (templated)
 template <typename NeighborType>
-std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
+std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,
@@ -351,6 +352,7 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
     // Pre-allocate results for each query
     std::vector<std::vector<std::string>> all_final_seqs(total_queries);
     std::vector<std::vector<int>> all_scores(total_queries);
+    std::vector<std::vector<size_t>> all_ids(total_queries);
 
     // Thread-safe progress tracking
     std::atomic<size_t> completed_queries(0);
@@ -378,11 +380,12 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
         std::vector<std::string> query_cand_seqs = find_sequences(ref_seqs, query_neighbors, stride);
 
         // Rerank candidates using Smith-Waterman
-        auto [top_seqs, top_scores] = sw_reranker(query_cand_seqs, query_seqs[i], k);
+        auto [top_seqs, top_scores, top_ids] = sw_reranker(query_cand_seqs, query_neighbors, query_seqs[i], k);
 
         // Store results for this query
         all_final_seqs[i] = std::move(top_seqs);
         all_scores[i] = std::move(top_scores);
+        all_ids[i] = std::move(top_ids);
 
         // Update progress bar (thread-safe)
         size_t current_completed = completed_queries.fetch_add(1) + 1;
@@ -400,16 +403,19 @@ std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static(
     // Flatten results
     std::vector<std::string> final_seqs;
     std::vector<int> scores;
+    std::vector<size_t> final_ids;
     final_seqs.reserve(total_queries * k);
     scores.reserve(total_queries * k);
+    final_ids.reserve(total_queries * k);
 
     for (size_t i = 0; i < total_queries; ++i)
     {
         final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
         scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
+        final_ids.insert(final_ids.end(), all_ids[i].begin(), all_ids[i].end());
     }
 
-    return {final_seqs, scores};
+    return {final_seqs, scores, final_ids};
 }
 
 // L2 distance version with dynamic lookup (templated)
@@ -669,11 +675,11 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, size_t);
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, size_t);
 
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
 
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
-template std::pair<std::vector<std::string>, std::vector<int>> post_process_sw_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
 
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic<size_t>(const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &, const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &, size_t);
