@@ -254,7 +254,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k, size_t rerank_lim)
+    size_t ref_len, size_t stride, size_t k, size_t k_clusters)
 {
     std::cout << "[POST-PROCESS] Using dynamic lookup & SW reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
@@ -280,15 +280,15 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    if (k < rerank_lim * stride)
+    if (k < k_clusters * stride)
     {
-        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure k_clusters <= k / stride.");
     }
 
 #pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t i = 0; i < total_queries; ++i)
     {
-        size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
+        size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
         std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
 
         // Get candidate sequences
@@ -339,7 +339,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k, size_t rerank_lim)
+    size_t ref_len, size_t stride, size_t k, size_t k_clusters)
 {
     std::cout << "[POST-PROCESS] Using static lookup & SW reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
@@ -365,15 +365,15 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    if (k < rerank_lim * stride)
+    if (k < k_clusters * stride)
     {
-        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure k_clusters <= k / stride.");
     }
 
 #pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t i = 0; i < total_queries; ++i)
     {
-        size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
+        size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
         std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
 
         // Get candidate sequences using static lookup
@@ -427,16 +427,16 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer, size_t rerank_lim)
+    Vectorizer &vectorizer, size_t k_clusters)
 {
     std::cout << "[POST-PROCESS] Using dynamic lookup & batched reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
 
-    if (k < rerank_lim * stride)
+    if (k < k_clusters * stride)
     {
-        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure k_clusters <= k / stride.");
     }
 
     auto converted_neighbors = convert_neighbors(neighbors);
@@ -453,7 +453,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     {
         query_start_indices.push_back(all_neighbor_indices.size());
 
-        size_t num_cands_per_query = std::min(rerank_lim, converted_neighbors[i].size());
+        size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
 
         all_neighbor_indices.insert(all_neighbor_indices.end(),
                                     converted_neighbors[i].begin(),
@@ -551,16 +551,16 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer, size_t rerank_lim)
+    Vectorizer &vectorizer, size_t k_clusters)
 {
     std::cout << "[POST-PROCESS] Using static lookup & batched reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
 
-    if (k < rerank_lim * stride)
+    if (k < k_clusters * stride)
     {
-        throw std::runtime_error("Not enough candidates for dense translator. Ensure rerank_lim <= k / stride.");
+        throw std::runtime_error("Not enough candidates for dense translator. Ensure k_clusters <= k / stride.");
     }
 
     auto converted_neighbors = convert_neighbors(neighbors);
@@ -579,10 +579,10 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
         query_start_indices.push_back(all_neighbor_indices.size());
     
         // For dense index (stride==1), use k directly since no reranking needed
-        // For sparse index (stride>1), use rerank_lim to limit reranking workload
+        // For sparse index (stride>1), use k_clusters to limit reranking workload
         size_t num_cands_per_query = (stride == 1) 
             ? std::min(k, converted_neighbors[i].size())
-            : std::min(rerank_lim, converted_neighbors[i].size());
+            : std::min(k_clusters, converted_neighbors[i].size());
 
         all_neighbor_indices.insert(all_neighbor_indices.end(),
                                     converted_neighbors[i].begin(),

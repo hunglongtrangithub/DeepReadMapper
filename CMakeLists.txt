@@ -99,27 +99,27 @@ target_include_directories(pipeline PRIVATE ${FAISS_INCLUDE_DIR})
 target_link_libraries(pipeline
     openvino::runtime
     OpenMP::OpenMP_CXX
-    # hnswlib
+    hnswlib
     cnpy
     ${FAISS_LIBRARY}
 )
 
 # Define source files for index executable
-set(INDEX_SOURCES
-    # For HNSW indexing
-    src/hnswlib_dir/index.cpp
-)
+# set(INDEX_SOURCES
+#     # For HNSW indexing
+#     src/hnswlib_dir/index.cpp
+# )
 
-# Create index executable
-add_executable(index ${INDEX_SOURCES} ${UTILS_SRCS} ${INFERENCE_SRCS})
+# # Create index executable
+# add_executable(index ${INDEX_SOURCES} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
-# Link libraries for index
-target_link_libraries(index
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    hnswlib
-    cnpy
-)
+# # Link libraries for index
+# target_link_libraries(index
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     hnswlib
+#     cnpy
+# )
 
 # DEFINE executable for testing inference only
 set(TEST_INFERENCE_SRCS
@@ -262,43 +262,43 @@ target_link_libraries(hnswpq_index
 )
 
 # DEFINE executable for testing HNSW with FAISS's IndexHNSWPQ
-set(HNSWPQ_SEARCH_SRCS
-    src/hnswpq/test_search.cpp
-    src/hnswpq/search.cpp
-)
+# set(HNSWPQ_SEARCH_SRCS
+#     src/hnswpq/test_search.cpp
+#     src/hnswpq/search.cpp
+# )
 
-add_executable(hnswpq_search ${HNSWPQ_SEARCH_SRCS} ${INFERENCE_SRCS} ${UTILS_SRCS})
+# add_executable(hnswpq_search ${HNSWPQ_SEARCH_SRCS} ${INFERENCE_SRCS} ${UTILS_SRCS})
 
-target_include_directories(hnswpq_search PRIVATE ${FAISS_INCLUDE_DIR})
+# target_include_directories(hnswpq_search PRIVATE ${FAISS_INCLUDE_DIR})
 
-target_link_libraries(hnswpq_search
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    cnpy
-    ${FAISS_LIBRARY}
-)
+# target_link_libraries(hnswpq_search
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     cnpy
+#     ${FAISS_LIBRARY}
+# )
 
 # DEFINE executable for generating ref.txt
-set(GENERATE_REF_SRCS
-    src/gen_ref.cpp
-)
+# set(GENERATE_REF_SRCS
+#     src/gen_ref.cpp
+# )
 
-add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
+# add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
-target_link_libraries(gen_ref
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    cnpy
-)
+# target_link_libraries(gen_ref
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     cnpy
+# )
 
 # DEFINE executable for SW calc
-set(SW_SRCS
-    src/test_sw_score.cpp
-)
-add_executable(calc_sw ${SW_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
+# set(SW_SRCS
+#     src/test_sw_score.cpp
+# )
+# add_executable(calc_sw ${SW_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
-target_link_libraries(calc_sw
-    openvino::runtime
-    OpenMP::OpenMP_CXX
-    cnpy
-)
+# target_link_libraries(calc_sw
+#     openvino::runtime
+#     OpenMP::OpenMP_CXX
+#     cnpy
+# )

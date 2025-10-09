@@ -210,20 +210,20 @@ int main(int argc, char *argv[])
         std::vector<int> final_sw_scores; // For SW reranking
 
         //* L2 distance reranking
-        int rerank_lim = Config::Postprocess::RERANK_LIM;
+        int k_clusters = Config::Postprocess::K_CLUSTERS;
         if (use_dynamic)
         {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
+            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
         }
         else
         {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, rerank_lim);
+            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
         }
 
         //* Smith-Waterman reranking
         // if (use_dynamic)
         // {
-        //     std::tie(final_seqs, final_sw_scores, final_ids) = post_process_sw_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, rerank_lim);
+        //     std::tie(final_seqs, final_scores) = post_process_sw_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, k_clusters);
         // }
         // else
         // {

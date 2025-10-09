@@ -175,42 +175,8 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path)
     // Cleanup
     munmap(const_cast<char *>(data), file_size);
     close(fd);
-
     std::cout << "Successfully read " << sequences.size() << " sequences" << std::endl;
     return sequences;
-}
-
-/// @brief Wrapper function for reading FASTA/FNA files
-/// @param file_path Path to the FASTA file
-/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
-/// @param stride Length of non-overlap part between 2 windows
-/// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences
-/// @return Pair of (sequences, positional labels as size_t)
-std::pair<std::vector<std::string>, std::vector<size_t>> read_fasta_file(const std::string &file_path, size_t ref_len, size_t stride, bool lookup_mode)
-{
-    std::string file_ext = std::filesystem::path(file_path).extension().string();
-    if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa")
-    {
-        throw std::runtime_error("Expected FASTA format (.fna/.fasta/.fa), got: " + file_ext);
-    }
-    
-    std::cout << "Detected FASTA file format." << std::endl;
-    return preprocess_fasta(file_path, ref_len, stride, lookup_mode);
-}
-
-/// @brief Wrapper function for reading FASTQ files
-/// @param file_path Path to the FASTQ file
-/// @return Pair of (sequences with PREFIX/POSTFIX, query IDs from headers)
-std::pair<std::vector<std::string>, std::vector<std::string>> read_fastq_file(const std::string &file_path)
-{
-    std::string file_ext = std::filesystem::path(file_path).extension().string();
-    if (file_ext != ".fastq" && file_ext != ".fq")
-    {
-        throw std::runtime_error("Expected FASTQ format (.fastq/.fq), got: " + file_ext);
-    }
-    
-    std::cout << "Detected FASTQ file format." << std::endl;
-    return preprocess_fastq(file_path);
 }
 
 /// @brief Generic wrapper function for reading input sequences (auto-detects format)

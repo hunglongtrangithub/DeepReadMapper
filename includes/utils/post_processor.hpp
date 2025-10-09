@@ -74,7 +74,7 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @param k Number of final candidates to return per query
-/// @param rerank_lim top-k candidates passed to reranker (default: 5)
+/// @param k_clusters top-k clusters passed to reranker (default: 5)
 /// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic(
@@ -82,7 +82,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k, size_t rerank_lim = 5);
+    size_t ref_len, size_t stride, size_t k, size_t k_clusters = 5);
 
 /// @brief Post-process with Smith-Waterman reranking using static sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -92,7 +92,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @param k Number of final candidates to return per query
-/// @param rerank_lim top-k candidates passed to reranker (default: 5)
+/// @param k_clusters top-k candidates passed to reranker (default: 5)
 /// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static(
@@ -100,7 +100,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k, size_t rerank_lim = 5);
+    size_t ref_len, size_t stride, size_t k, size_t k_clusters = 5);
 
 /// @brief Post-process with L2 distance reranking using dynamic sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -112,7 +112,7 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 /// @param k Number of final candidates to return per query
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
-/// @param rerank_lim top-k candidates passed to reranker (default: 5)
+/// @param k_clusters top-k candidates passed to reranker (default: 5)
 /// @return Tuple ( sequences, L2 distances, original IDs )
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic(
@@ -122,7 +122,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer, size_t rerank_lim = 5);
+    Vectorizer &vectorizer, size_t k_clusters = 5);
 
 /// @brief Post-process with L2 distance reranking using static sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -134,8 +134,8 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 /// @param k Number of final candidates to return per query
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
-/// @param rerank_lim top-k candidates passed to reranker (default: 5)
-/// @note During configuration for rerank_lim and k, ensure rerank_lim <= k / stride to guarantee enough candidates for dense index retrieval.
+/// @param k_clusters top-k candidates passed to reranker (default: 5)
+/// @note During configuration for k_clusters and k, ensure k_clusters <= k / stride to guarantee enough candidates for dense index retrieval.
 /// @return Tuple ( sequences, L2 distances, original IDs )
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(
@@ -145,4 +145,4 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     const std::vector<std::string> &query_seqs,
     size_t ref_len, size_t stride, size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer, size_t rerank_lim = 5);
+    Vectorizer &vectorizer, size_t k_clusters = 5);

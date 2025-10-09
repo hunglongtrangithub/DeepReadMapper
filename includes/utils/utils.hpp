@@ -32,14 +32,6 @@ std::vector<std::string> read_txt_default(const std::string &file_path);
 std::vector<std::string> read_txt_mmap(const std::string &file_path);
 #endif
 
-/// @brief Read FASTA/FNA file (for indexing)
-/// @return Pair of (sequences, positional labels as size_t)
-std::pair<std::vector<std::string>, std::vector<size_t>> read_fasta_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);
-
-/// @brief Read FASTQ file (for searching)
-/// @return Pair of (sequences, query IDs from headers)
-std::pair<std::vector<std::string>, std::vector<std::string>> read_fastq_file(const std::string &file_path);
-
 /// @brief Generic file reader (auto-detects format)
 /// @return Pair of (sequences, query IDs). For FASTA/TXT returns empty IDs, for FASTQ returns actual IDs
 std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const std::string &file_path, size_t ref_len = 150, size_t stride = 1, bool lookup_mode = false);

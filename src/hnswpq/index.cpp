@@ -149,11 +149,11 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
         throw std::runtime_error("Labels size does not match number of input vectors");
     }
 
-    std::vector<faiss::idx_t> faiss_labels(labels.size());
-    for (size_t i = 0; i < labels.size(); ++i)
-    {
-        faiss_labels[i] = static_cast<faiss::idx_t>(labels[i]);
-    }
+    // std::vector<faiss::idx_t> faiss_labels(labels.size());
+    // for (size_t i = 0; i < labels.size(); ++i)
+    // {
+    //     faiss_labels[i] = static_cast<faiss::idx_t>(labels[i]);
+    // }
 
     // Add vector by batches
     const size_t batch_size = 10000;
@@ -231,7 +231,10 @@ int main(int argc, char *argv[])
 
     // Load input data
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    auto [sequences, labels] = read_fasta_file(ref_file, ref_len, stride);
+    auto [sequences, __] = read_file(ref_file, ref_len, stride);
+
+    // Create empty labels as we dont need them
+    std::vector<size_t> labels(sequences.size());
 
     if (sequences.empty())
     {
