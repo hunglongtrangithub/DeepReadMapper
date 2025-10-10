@@ -103,10 +103,55 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
     size_t k,
     Vectorizer &vectorizer)
 {
-    // Step 1: Single vectorization call for ALL candidates
-    std::vector<std::vector<float>> all_cand_embeddings = vectorizer.vectorize(all_cand_seqs, false);
+    // Configuration: Process candidates in chunks to avoid memory overflow
+    const size_t CHUNK_SIZE = Config::Postprocess::CHUNK_SIZE;
 
-    std::cout << "[BATCH-RERANKER] Finished vectorizing " << all_cand_seqs.size() << " candidate sequences" << std::endl;
+    std::cout << "[BATCH-RERANKER] Vectorizing " << all_cand_seqs.size() << " candidate sequences in chunks of " << CHUNK_SIZE << std::endl;
+
+    // Step 1: Vectorize ALL candidates in chunks
+    std::vector<std::vector<float>> all_cand_embeddings;
+    all_cand_embeddings.reserve(all_cand_seqs.size());
+
+    size_t total_chunks = (all_cand_seqs.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    std::atomic<size_t> completed_chunks(0);
+
+    std::cout << "[BATCH-RERANKER] Processing " << total_chunks << " chunks..." << std::endl;
+
+    // Hide cursor and create progress bar for vectorization
+    indicators::show_console_cursor(false);
+    indicators::ProgressBar vectorizationBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"vectorizing candidate chunks"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    for (size_t chunk_start = 0; chunk_start < all_cand_seqs.size(); chunk_start += CHUNK_SIZE)
+    {
+        size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, all_cand_seqs.size());
+
+        // Create chunk view
+        std::vector<std::string> chunk(all_cand_seqs.begin() + chunk_start,
+                                       all_cand_seqs.begin() + chunk_end);
+
+        // Vectorize this chunk
+        std::vector<std::vector<float>> chunk_embeddings = vectorizer.vectorize(chunk, false);
+
+        // Append to results
+        all_cand_embeddings.insert(all_cand_embeddings.end(),
+                                   chunk_embeddings.begin(),
+                                   chunk_embeddings.end());
+
+        // Update progress bar
+        size_t current_completed = completed_chunks.fetch_add(1) + 1;
+        size_t current_progress_percent = (current_completed * 100) / total_chunks;
+        vectorizationBar.set_progress(current_progress_percent);
+    }
+
+    // Complete vectorization progress bar
+    vectorizationBar.set_progress(100);
+    indicators::show_console_cursor(true);
+
+    std::cout << "[BATCH-RERANKER] Finished vectorizing " << all_cand_embeddings.size() << " candidate sequences" << std::endl;
 
     // Step 2: Pre-allocate results vector
     std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> results(query_embeddings.size());
@@ -115,8 +160,11 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
     std::atomic<size_t> completed_queries{0};
     const size_t total_queries = query_embeddings.size();
 
+    std::cout << "[BATCH-RERANKER] Reranking " << total_queries << " queries..." << std::endl;
+
+    // Hide cursor and create progress bar for reranking
     indicators::show_console_cursor(false);
-    indicators::ProgressBar progressBar{
+    indicators::ProgressBar rerankingBar{
         indicators::option::BarWidth{80},
         indicators::option::PrefixText{"batch-reranking"},
         indicators::option::ShowElapsedTime{true},
@@ -137,11 +185,8 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
             size_t current_completed = completed_queries.fetch_add(1) + 1;
             if (current_completed % 1000 == 0 || current_completed == total_queries)
             {
-#pragma omp critical
-                {
-                    size_t progress_percent = (current_completed * 100) / total_queries;
-                    progressBar.set_progress(progress_percent);
-                }
+                size_t progress_percent = (current_completed * 100) / total_queries;
+                rerankingBar.set_progress(progress_percent);
             }
             continue;
         }
@@ -156,7 +201,6 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
         }
 
         // Sort and get top k
-        // There's an error if not enough candidates are available
         if (num_cands < k)
         {
             throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + " < " + std::to_string(k) + ") for query " + std::to_string(q));
@@ -189,15 +233,13 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
         size_t current_completed = completed_queries.fetch_add(1) + 1;
         if (current_completed % 1000 == 0 || current_completed == total_queries)
         {
-#pragma omp critical
-            {
-                size_t progress_percent = (current_completed * 100) / total_queries;
-                progressBar.set_progress(progress_percent);
-            }
+            size_t progress_percent = (current_completed * 100) / total_queries;
+            rerankingBar.set_progress(progress_percent);
         }
     }
 
-    progressBar.set_progress(100);
+    // Complete reranking progress bar and show cursor
+    rerankingBar.set_progress(100);
     indicators::show_console_cursor(true);
 
     return results;

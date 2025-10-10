@@ -51,14 +51,14 @@ std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @return Vector of sequences found, in the same order as ids
-std::vector<std::string> find_sequences(const std::string &ref_genome, const std::vector<size_t> &ids, size_t ref_len, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(const std::string &ref_genome, const std::vector<size_t> &sparse_ids, size_t ref_len, size_t stride = 1);
 
 /// @brief Wrapper to find multiple sequences asynchronously from static reference sequences (Overload for static fetching)
 /// @param ref_seqs Vector of reference sequences
 /// @param ids Vector of ids to find
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
 /// @return Vector of sequences found, in the same order as ids
-std::vector<std::string> find_sequences(const std::vector<std::string> &ref_seqs, const std::vector<size_t> &ids, size_t stride = 1);
+std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(const std::vector<std::string> &ref_seqs, const std::vector<size_t> &sparse_ids, size_t stride = 1);
 
 /// @brief Helper function to convert neighbor types to size_t
 template <typename NeighborType>
@@ -124,6 +124,34 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     const std::vector<std::vector<float>> &query_embeddings,
     Vectorizer &vectorizer, size_t k_clusters = 5);
 
+/// @brief Post-process with L2 distance reranking using dynamic sequence fetching with streaming output to SAM file
+/// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
+/// @param distances 2D vector of distances from HNSW search
+/// @param ref_genome Reference genome as a single string
+/// @param query_seqs Vector of query sequences
+/// @param query_ids Vector of query IDs (for SAM output)
+/// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
+/// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
+/// @param k Number of final candidates to return per query
+/// @param query_embeddings Pre-computed embeddings for query sequences
+/// @param vectorizer Vectorizer instance for computing candidate embeddings
+/// @param k_clusters top-k candidates passed to reranker (default: 5)
+/// @param sam_file Output SAM file path
+/// @param ref_name Reference sequence name (for SAM header)
+/// @note This function writes results directly to the SAM file in streaming mode to save memory -> Return nothing
+template <typename NeighborType>
+void post_process_l2_dynamic_streaming(
+    const std::vector<std::vector<NeighborType>> &neighbors,
+    const std::vector<std::vector<float>> &distances,
+    const std::string &ref_genome,
+    const std::vector<std::string> &query_seqs,
+    const std::vector<std::string> &query_ids,
+    size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<float>> &query_embeddings,
+    Vectorizer &vectorizer, size_t k_clusters,
+    const std::string &sam_file,
+    const std::string &ref_name);
+
 /// @brief Post-process with L2 distance reranking using static sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
 /// @param distances 2D vector of distances from HNSW search
@@ -135,7 +163,8 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 /// @param query_embeddings Pre-computed embeddings for query sequences
 /// @param vectorizer Vectorizer instance for computing candidate embeddings
 /// @param k_clusters top-k candidates passed to reranker (default: 5)
-/// @note During configuration for k_clusters and k, ensure k_clusters <= k / stride to guarantee enough candidates for dense index retrieval.
+/// @note Configuration constraint: k <= k_clusters * 2 * stride
+
 /// @return Tuple ( sequences, L2 distances, original IDs )
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(

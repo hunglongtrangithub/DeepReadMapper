@@ -658,8 +658,9 @@ std::pair<std::vector<std::string>, std::vector<std::string>> format_fastq(const
         std::cout << "Processing FASTQ data..." << std::endl;
     }
 
-    // Count newlines to estimate sequences
-    size_t estimated_seqs = std::count(data, data + data_size, '\n') / 4;
+    // Count newlines to estimate sequences (Note that 'count' function is expensive)
+    // size_t estimated_seqs = std::count(data, data + data_size, '\n') / 4;
+    size_t estimated_seqs = data_size / 200; // Rough estimate: ~200 bytes per FASTQ record
 
     std::vector<std::string> sequences;
     std::vector<std::string> query_ids;

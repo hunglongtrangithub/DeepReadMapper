@@ -368,11 +368,7 @@ void write_sam(const std::vector<std::string>& final_seqs,
             
             size_t idx = i * k + j;
             size_t seq_id = sequence_ids[idx];
-            
-            if (i == 0 && j < 5) {
-                std::cout << "Query 0, Cand " << j << ": seq_id=" << seq_id 
-                        << ", genomic_pos=" << (seq_id/2) << std::endl;
-            }
+
             // Derive position and reverse complement from ID
             size_t genomic_pos = seq_id / 2 + 1;  // +1 for 1-based SAM position
             bool is_reverse = (seq_id % 2 == 1);
@@ -405,6 +401,107 @@ void write_sam(const std::vector<std::string>& final_seqs,
     }
     
     sam_file.close();
+}
+
+void write_sam_streaming(
+    const std::vector<std::string> &cand_seqs,
+    const std::vector<float> &scores,
+    const std::vector<std::string> &query_seqs,
+    const std::vector<std::string> &query_ids,
+    const std::vector<size_t> &cand_ids,
+    const std::string &ref_name,
+    size_t ref_len,
+    size_t k,
+    const std::string &sam_file,
+    size_t query_offset,
+    bool write_header)
+{
+    std::ofstream outfile;
+    
+    if (write_header)
+    {
+        // First batch: overwrite and write header
+        outfile.open(sam_file, std::ios::out);
+        if (!outfile.is_open())
+        {
+            throw std::runtime_error("Failed to open SAM file: " + sam_file);
+        }
+        
+        // Write SAM header - MATCHING ORIGINAL
+        outfile << "@HD\tVN:1.0\tSO:unsorted\n";
+        outfile << "@SQ\tSN:" << ref_name << "\tLN:" << ref_len << "\n";
+    }
+    else
+    {
+        // Subsequent batches: append
+        outfile.open(sam_file, std::ios::app);
+        if (!outfile.is_open())
+        {
+            throw std::runtime_error("Failed to open SAM file for appending: " + sam_file);
+        }
+    }
+
+    // Calculate PREFIX/POSTFIX lengths for stripping - MATCHING ORIGINAL
+    const size_t prefix_len = strlen(PREFIX);
+    const size_t postfix_len = strlen(POSTFIX);
+    
+    // Number of queries in THIS BATCH
+    size_t batch_query_count = cand_seqs.size() / k;
+    
+    for (size_t i = 0; i < batch_query_count; ++i)
+    {
+        size_t global_query_idx = query_offset + i;
+        
+        // Strip PREFIX and POSTFIX from query sequence
+        std::string clean_query = query_seqs[global_query_idx];
+        if (clean_query.length() > prefix_len + postfix_len) {
+            clean_query = clean_query.substr(prefix_len, clean_query.length() - prefix_len - postfix_len);
+        }
+        
+        for (size_t j = 0; j < k; ++j)
+        {
+            size_t idx = i * k + j;
+            
+            if (idx >= cand_seqs.size())
+            {
+                break;
+            }
+            
+            size_t seq_id = cand_ids[idx];
+
+            // Derive position and reverse complement from ID
+            size_t genomic_pos = seq_id / 2 + 1;  // +1 for 1-based SAM position
+            bool is_reverse = (seq_id % 2 == 1);
+            
+            // FLAG: primary/secondary + reverse complement
+            int flag = (j == 0) ? 0 : 256;  // Primary vs secondary
+            if (is_reverse) flag |= 16;     // Add reverse complement flag
+
+            // Pseudo MAPQ
+            int mapq = 60;
+            
+            // Pseudo CIGAR
+            std::string cigar = std::to_string(clean_query.length()) + "M";
+            
+            // Use actual query ID from FASTQ if available
+            std::string qname = (global_query_idx < query_ids.size() && !query_ids[global_query_idx].empty()) 
+                                ? query_ids[global_query_idx] 
+                                : "S1/" + std::to_string(global_query_idx+1) + "/0";
+            
+            // Write SAM line - MATCHING ORIGINAL FORMAT
+            outfile << qname << "\t"                // QNAME (real from FASTQ)
+                    << flag << "\t"                  // FLAG (real)
+                    << ref_name << "\t"              // RNAME (real)
+                    << genomic_pos << "\t"           // POS (real, 1-based)
+                    << mapq << "\t"                  // MAPQ (pseudo)
+                    << cigar << "\t"                 // CIGAR (pseudo, based on cleaned query length)
+                    << "*\t0\t0\t"                   // RNEXT, PNEXT, TLEN
+                    << clean_query << "\t"           // SEQ (cleaned - no PREFIX/POSTFIX)
+                    << "*\n";                        // QUAL
+        }
+    }
+    
+    outfile.close();
 }
 
 int save_config(const std::unordered_map<std::string, ConfigValue> &config, const std::string &folder_path, const std::string &config_file)

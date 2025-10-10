@@ -9,14 +9,15 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 4 || argc > 8)
+    if (argc < 4 || argc > 10)
     {
-        std::cerr << "Usage: " << argv[0] << " <index_prefix> <quer_seqs.fastq> <ref_seqs.fasta> [EF] [K] [output_dir] [use_dynamic]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <index_prefix> <quer_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters] [output_dir] [use_dynamic] [use_streaming]" << std::endl;
         std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
         std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
 
         std::cerr << "  - output_dir: Optional output directory (default: current directory)" << std::endl;
         std::cerr << "  - use_dynamic: Optional flag to load reference sequences dynamically (1) or statically (0). Default: 0" << std::endl;
+        std::cerr << "  - use_streaming: Optional flag to use streaming output to SAM file (1) or normal output (0). Default: 0" << std::endl;
         return 1;
     }
 
@@ -51,13 +52,20 @@ int main(int argc, char *argv[])
         // Optional HNSW search parameters
         const int ef = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::EF;
         const int k = (argc >= 6) ? std::stoi(argv[5]) : Config::Search::K;
+        int k_clusters = Config::Search::K_CLUSTERS;
+        if (stride == 1) {
+            k_clusters = k;
+        } else if (argc >= 7) {
+            k_clusters = std::stoi(argv[6]);
+        };
 
         // Optional output file names with defaults
-        const std::string output_dir = (argc >= 7) ? argv[6] : ".";
+        const std::string output_dir = (argc >= 8) ? argv[7] : ".";
         const std::string sam_file = output_dir + "/results.sam";
 
         //* Suggest: Use dynamic when ref_len is large (e.g. 10,000) to save memory
-        const bool use_dynamic = (argc >= 8) ? (std::stoi(argv[7]) != 0) : false;
+        const bool use_dynamic = (argc >= 9) ? (std::stoi(argv[8]) != 0) : false;
+        const bool use_streaming = (argc >= 10) ? (std::stoi(argv[9]) != 0) : false;
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -177,7 +185,7 @@ int main(int argc, char *argv[])
         // auto [neighbors, distances] = search(alg_hnsw, embeddings);
 
         //* HNSWPQ search
-        auto [neighbors, distances] = faiss_search(alg_hnsw, embeddings, k, ef);
+        auto [neighbors, distances] = faiss_search(alg_hnsw, embeddings, k_clusters, ef);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -210,10 +218,16 @@ int main(int argc, char *argv[])
         std::vector<int> final_sw_scores; // For SW reranking
 
         //* L2 distance reranking
-        int k_clusters = Config::Postprocess::K_CLUSTERS;
         if (use_dynamic)
         {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
+            if (use_streaming) {
+                std::cout << "[MAIN] Using STREAMING output to SAM file: " << sam_file << std::endl;
+                post_process_l2_dynamic_streaming(neighbors, distances, ref_genome, query_sequences, query_ids, ref_len, stride, k, embeddings, vectorizer, k_clusters, sam_file, "ref");
+                // Skip the rest of the post-processing and output saving
+            } else {
+                std::cout << "[MAIN] Using NORMAL output to SAM file: " << sam_file << std::endl;
+                std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
+            }
         }
         else
         {
@@ -250,10 +264,10 @@ int main(int argc, char *argv[])
         // }
 
         // Save results to disk
-        //! This is deprecated
-        // TODO: Replace from bin/npy output to SAM format
         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
+
+        if (!use_streaming) {
 
         // bool use_npy = true;
         // std::string indices_file = output_dir + "/indices.npy";
@@ -273,6 +287,12 @@ int main(int argc, char *argv[])
 
         main_pipeline_time += duration.count();
         std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+
+        }
+        else
+        {
+            std::cout << "[MAIN] Skip normal output saving since streaming output is used." << std::endl;
+        }
 
         auto master_end = std::chrono::high_resolution_clock::now();
         auto master_duration = std::chrono::duration_cast<std::chrono::milliseconds>(master_end - master_start);

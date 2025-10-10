@@ -83,6 +83,20 @@ void write_sam(const std::vector<std::string>& final_seqs,
                size_t k, 
                const std::string& output_file);
 
+/// @brief Write SAM output in streaming mode (appends to file)
+void write_sam_streaming(
+    const std::vector<std::string> &cand_seqs,
+    const std::vector<float> &scores,
+    const std::vector<std::string> &query_seqs,
+    const std::vector<std::string> &query_ids,
+    const std::vector<size_t> &cand_ids,
+    const std::string &ref_name,
+    size_t ref_len,
+    size_t k,
+    const std::string &sam_file,
+    size_t query_offset = 0,
+    bool write_header = false);
+
 using ConfigValue = std::variant<size_t, float, std::string>;
 
 /// @brief Save index config to a text file.
