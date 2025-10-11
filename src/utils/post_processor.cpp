@@ -70,8 +70,8 @@ std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_
     return ref_seqs[id];
 }
 
-// Dynamic lookup version - returns both sequences and their dense IDs
-std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(
+// Dynamic lookup version - returns sequences, their dense IDs, and mapping indices to the unique pool
+std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
     const std::string &ref_genome,
     const std::vector<size_t> &sparse_ids,
     size_t ref_len,
@@ -79,32 +79,38 @@ std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(
 {
     if (sparse_ids.empty())
     {
-        return {{}, {}};
+        return {{}, {}, {}};
     }
 
-    // For dense index (stride==1), do direct lookup
+    // Dense index (stride == 1): direct lookup, no expansion
     if (stride == 1)
     {
         std::vector<std::string> results;
         std::vector<size_t> expanded_ids;
+        std::vector<size_t> mapping_ids;
+
         results.reserve(sparse_ids.size());
         expanded_ids.reserve(sparse_ids.size());
+        mapping_ids.reserve(sparse_ids.size());
 
-        for (size_t id : sparse_ids)
+        for (size_t i = 0; i < sparse_ids.size(); ++i)
         {
+            size_t id = sparse_ids[i];
             results.push_back(find_sequence(ref_genome, id, ref_len));
-            expanded_ids.push_back(id); // ID stays same for stride=1
+            expanded_ids.push_back(id);
+            mapping_ids.push_back(i); // Direct 1-to-1 mapping
         }
-
-        return {results, expanded_ids};
+        return {results, expanded_ids, mapping_ids};
     }
 
-    // For sparse index (stride>1), expand to neighboring ids
-    std::vector<std::string> results;
-    std::vector<size_t> expanded_ids;
-    size_t expected_size = sparse_ids.size() * (2 * stride - 1);
-    results.reserve(expected_size);
-    expanded_ids.reserve(expected_size);
+    // Sparse index (stride > 1): expand with deduplication
+    std::cout << "[FIND_SEQUENCES] Processing " << sparse_ids.size() << " sparse IDs with stride=" << stride << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // Step 1: Collect all expanded dense IDs with deduplication
+    std::unordered_set<size_t> dense_id_set;
+    std::vector<size_t> expansion_order; // Track order of first appearance
+    size_t total_expansions = 0;
 
     for (size_t sparse_id : sparse_ids)
     {
@@ -112,58 +118,131 @@ std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(
 
         if (actual_position >= ref_genome.size())
         {
-            continue; // Skip out-of-bounds
+            continue;
         }
 
         size_t start = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
         size_t end = std::min(actual_position + stride, ref_genome.size());
 
-        // Add all sequences in the range WITH their dense IDs
         for (size_t pos = start; pos < end; ++pos)
         {
-            results.push_back(find_sequence(ref_genome, pos, ref_len));
-            expanded_ids.push_back(pos); // Store the actual dense position
+            auto [iter, inserted] = dense_id_set.insert(pos);
+            if (inserted)
+            {
+                expansion_order.push_back(pos);
+            }
+            total_expansions++;
         }
     }
 
-    return {results, expanded_ids};
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+    std::cout << "[FIND_SEQUENCES] Expansion analysis:" << std::endl;
+    std::cout << "  - Total expansions: " << total_expansions << std::endl;
+    std::cout << "  - Unique dense IDs: " << expansion_order.size() << std::endl;
+    std::cout << "  - Duplicates removed: " << (total_expansions - expansion_order.size()) << std::endl;
+    std::cout << "  - Compression ratio: " << std::fixed << std::setprecision(2)
+              << (100.0 * expansion_order.size() / total_expansions) << "%" << std::endl;
+    std::cout << "  - Expansion time: " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Create mapping from dense_id to its index in the unique pool
+    start_time = std::chrono::high_resolution_clock::now();
+    std::unordered_map<size_t, size_t> dense_id_to_idx;
+    for (size_t i = 0; i < expansion_order.size(); ++i)
+    {
+        dense_id_to_idx[expansion_order[i]] = i;
+    }
+
+    // Step 3: Fetch unique sequences using dynamic lookup
+    std::vector<std::string> unique_seqs;
+    unique_seqs.reserve(expansion_order.size());
+
+    for (size_t pos : expansion_order)
+    {
+        unique_seqs.push_back(find_sequence(ref_genome, pos, ref_len));
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "  - Lookup time: " << duration.count() << " ms" << std::endl;
+
+    // Step 4: Build mapping indices for all original expansions
+    start_time = std::chrono::high_resolution_clock::now();
+    std::vector<size_t> mapping_ids;
+    mapping_ids.reserve(total_expansions);
+
+    for (size_t sparse_id : sparse_ids)
+    {
+        size_t actual_position = sparse_id * stride;
+
+        if (actual_position >= ref_genome.size())
+        {
+            continue;
+        }
+
+        size_t start = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
+        size_t end = std::min(actual_position + stride, ref_genome.size());
+
+        for (size_t pos = start; pos < end; ++pos)
+        {
+            // Map this dense_id to its index in unique pool
+            mapping_ids.push_back(dense_id_to_idx[pos]);
+        }
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "  - Mapping creation: " << duration.count() << " ms" << std::endl;
+    std::cout << "  - Final sequences: " << unique_seqs.size() << std::endl;
+    std::cout << "  - Mapping indices: " << mapping_ids.size() << std::endl;
+
+    return {unique_seqs, expansion_order, mapping_ids};
 }
 
-// Wrapper to return both sequences and their dense IDs
-std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(
+// Static lookup version - returns sequences, their dense IDs, and mapping indices to the unique pool
+std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
     const std::vector<std::string> &ref_seqs,
     const std::vector<size_t> &sparse_ids,
     size_t stride)
 {
     if (sparse_ids.empty())
     {
-        return {{}, {}};
+        return {{}, {}, {}};
     }
 
+    // Dense index (stride == 1): direct lookup, no expansion
     if (stride == 1)
     {
         std::vector<std::string> results;
         std::vector<size_t> expanded_ids;
+        std::vector<size_t> mapping_ids;
+
         results.reserve(sparse_ids.size());
         expanded_ids.reserve(sparse_ids.size());
+        mapping_ids.reserve(sparse_ids.size());
 
-        for (size_t id : sparse_ids)
+        for (size_t i = 0; i < sparse_ids.size(); ++i)
         {
+            size_t id = sparse_ids[i];
             if (id < ref_seqs.size())
             {
                 results.push_back(ref_seqs[id]);
-                expanded_ids.push_back(id); // ID stays same for stride=1
+                expanded_ids.push_back(id);
+                mapping_ids.push_back(i); // Direct 1-to-1 mapping
             }
         }
-        return {results, expanded_ids};
+        return {results, expanded_ids, mapping_ids};
     }
 
-    // For sparse index (stride>1), expand to neighboring ids
-    std::vector<std::string> results;
-    std::vector<size_t> expanded_ids; // Track which dense ID each sequence corresponds to
-    size_t expected_size = sparse_ids.size() * (2 * stride - 1);
-    results.reserve(expected_size);
-    expanded_ids.reserve(expected_size);
+    // Sparse index (stride > 1): expand with deduplication
+    std::cout << "[FIND_SEQUENCES] Processing " << sparse_ids.size() << " sparse IDs with stride=" << stride << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // Step 1: Collect all expanded dense IDs with deduplication
+    std::unordered_set<size_t> dense_id_set;
+    std::vector<size_t> expansion_order; // Track order of first appearance
+    size_t total_expansions = 0;
 
     for (size_t sparse_id : sparse_ids)
     {
@@ -171,24 +250,89 @@ std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(
 
         if (actual_position >= ref_seqs.size())
         {
-            continue; // Skip out-of-bounds
+            continue;
         }
 
         size_t start = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
         size_t end = std::min(actual_position + stride, ref_seqs.size());
 
-        // Add all sequences in the range WITH their dense IDs
         for (size_t pos = start; pos < end; ++pos)
         {
-            if (pos < ref_seqs.size())
+            auto [iter, inserted] = dense_id_set.insert(pos);
+            if (inserted)
             {
-                results.push_back(ref_seqs[pos]);
-                expanded_ids.push_back(pos); // Store the actual dense position
+                expansion_order.push_back(pos);
             }
+            total_expansions++;
         }
     }
 
-    return {results, expanded_ids};
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+    std::cout << "[FIND_SEQUENCES] Expansion analysis:" << std::endl;
+    std::cout << "  - Total expansions: " << total_expansions << std::endl;
+    std::cout << "  - Unique dense IDs: " << expansion_order.size() << std::endl;
+    std::cout << "  - Duplicates removed: " << (total_expansions - expansion_order.size()) << std::endl;
+    std::cout << "  - Compression ratio: " << std::fixed << std::setprecision(2)
+              << (100.0 * expansion_order.size() / total_expansions) << "%" << std::endl;
+    std::cout << "  - Expansion time: " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Create mapping from dense_id to its index in the unique pool
+    start_time = std::chrono::high_resolution_clock::now();
+    std::unordered_map<size_t, size_t> dense_id_to_idx;
+    for (size_t i = 0; i < expansion_order.size(); ++i)
+    {
+        dense_id_to_idx[expansion_order[i]] = i;
+    }
+
+    // Step 3: Fetch unique sequences
+    std::vector<std::string> unique_seqs;
+    unique_seqs.reserve(expansion_order.size());
+
+    for (size_t pos : expansion_order)
+    {
+        if (pos < ref_seqs.size())
+        {
+            unique_seqs.push_back(ref_seqs[pos]);
+        }
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "  - Lookup time: " << duration.count() << " ms" << std::endl;
+
+    // Step 4: Build mapping indices for all original expansions
+    start_time = std::chrono::high_resolution_clock::now();
+    std::vector<size_t> mapping_ids;
+    mapping_ids.reserve(total_expansions);
+
+    for (size_t sparse_id : sparse_ids)
+    {
+        size_t actual_position = sparse_id * stride;
+
+        if (actual_position >= ref_seqs.size())
+        {
+            continue;
+        }
+
+        size_t start = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
+        size_t end = std::min(actual_position + stride, ref_seqs.size());
+
+        for (size_t pos = start; pos < end; ++pos)
+        {
+            // Map this dense_id to its index in unique pool
+            mapping_ids.push_back(dense_id_to_idx[pos]);
+        }
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "  - Mapping creation: " << duration.count() << " ms" << std::endl;
+    std::cout << "  - Final sequences: " << unique_seqs.size() << std::endl;
+    std::cout << "  - Mapping indices: " << mapping_ids.size() << std::endl;
+
+    return {unique_seqs, expansion_order, mapping_ids};
 }
 
 // Helper function to convert neighbor types to size_t
@@ -227,8 +371,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     size_t total_queries = query_seqs.size();
 
     // Pre-allocate results for each query
-    std::vector<std::vector<std::string>> all_final_seqs(total_queries);
-    std::vector<std::vector<int>> all_scores(total_queries);
+    std::vector<std::vector<std::string>> query_final_seqs(total_queries);
+    std::vector<std::vector<int>> query_scores(total_queries);
     std::vector<std::vector<size_t>> all_ids(total_queries);
 
     // Thread-safe progress tracking
@@ -253,15 +397,27 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
         size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
         std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
 
-        // Get candidate sequences
-        auto [query_cand_seqs, expanded_ids] = find_sequences(ref_genome, query_neighbors, ref_len, stride);
+        // Get candidate sequences using dynamic lookup (returns unique seqs + mapping)
+        auto [unique_seqs, unique_ids, mapping_to_unique] = find_sequences(ref_genome, query_neighbors, ref_len, stride);
+
+        // Expand sequences back to original count using mapping
+        std::vector<std::string> query_cand_seqs;
+        std::vector<size_t> expanded_ids;
+        query_cand_seqs.reserve(mapping_to_unique.size());
+        expanded_ids.reserve(mapping_to_unique.size());
+
+        for (size_t idx : mapping_to_unique)
+        {
+            query_cand_seqs.push_back(unique_seqs[idx]);
+            expanded_ids.push_back(unique_ids[idx]);
+        }
 
         // Rerank candidates using Smith-Waterman
         auto [top_seqs, top_scores, top_ids] = sw_reranker(query_cand_seqs, expanded_ids, query_seqs[i], k);
 
         // Store results for this query
-        all_final_seqs[i] = std::move(top_seqs);
-        all_scores[i] = std::move(top_scores);
+        query_final_seqs[i] = std::move(top_seqs);
+        query_scores[i] = std::move(top_scores);
         all_ids[i] = std::move(top_ids);
 
         // Update progress bar (thread-safe)
@@ -287,8 +443,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 
     for (size_t i = 0; i < total_queries; ++i)
     {
-        final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
-        scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
+        final_seqs.insert(final_seqs.end(), query_final_seqs[i].begin(), query_final_seqs[i].end());
+        scores.insert(scores.end(), query_scores[i].begin(), query_scores[i].end());
         final_ids.insert(final_ids.end(), all_ids[i].begin(), all_ids[i].end());
     }
 
@@ -312,8 +468,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
     size_t total_queries = query_seqs.size();
 
     // Pre-allocate results for each query
-    std::vector<std::vector<std::string>> all_final_seqs(total_queries);
-    std::vector<std::vector<int>> all_scores(total_queries);
+    std::vector<std::vector<std::string>> query_final_seqs(total_queries);
+    std::vector<std::vector<int>> query_scores(total_queries);
     std::vector<std::vector<size_t>> all_ids(total_queries);
 
     // Thread-safe progress tracking
@@ -338,15 +494,27 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
         size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
         std::vector<size_t> query_neighbors(converted_neighbors[i].begin(), converted_neighbors[i].begin() + num_cands_per_query);
 
-        // Get candidate sequences using static lookup
-        auto [query_cand_seqs, expanded_ids] = find_sequences(ref_seqs, query_neighbors, stride);
+        // Get candidate sequences using static lookup (returns unique seqs + mapping)
+        auto [unique_seqs, unique_ids, mapping_to_unique] = find_sequences(ref_seqs, query_neighbors, stride);
+
+        // Expand sequences back to original count using mapping
+        std::vector<std::string> query_cand_seqs;
+        std::vector<size_t> expanded_ids;
+        query_cand_seqs.reserve(mapping_to_unique.size());
+        expanded_ids.reserve(mapping_to_unique.size());
+
+        for (size_t idx : mapping_to_unique)
+        {
+            query_cand_seqs.push_back(unique_seqs[idx]);
+            expanded_ids.push_back(unique_ids[idx]);
+        }
 
         // Rerank candidates using Smith-Waterman
         auto [top_seqs, top_scores, top_ids] = sw_reranker(query_cand_seqs, expanded_ids, query_seqs[i], k);
 
         // Store results for this query
-        all_final_seqs[i] = std::move(top_seqs);
-        all_scores[i] = std::move(top_scores);
+        query_final_seqs[i] = std::move(top_seqs);
+        query_scores[i] = std::move(top_scores);
         all_ids[i] = std::move(top_ids);
 
         // Update progress bar (thread-safe)
@@ -372,8 +540,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 
     for (size_t i = 0; i < total_queries; ++i)
     {
-        final_seqs.insert(final_seqs.end(), all_final_seqs[i].begin(), all_final_seqs[i].end());
-        scores.insert(scores.end(), all_scores[i].begin(), all_scores[i].end());
+        final_seqs.insert(final_seqs.end(), query_final_seqs[i].begin(), query_final_seqs[i].end());
+        scores.insert(scores.end(), query_scores[i].begin(), query_scores[i].end());
         final_ids.insert(final_ids.end(), all_ids[i].begin(), all_ids[i].end());
     }
 
@@ -396,7 +564,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
     std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
 
-    if (k > k_clusters * 2 * stride)
+    if (k > k_clusters * 2 * stride && stride > 1)
     {
         throw std::runtime_error("Final k too large. Ensure k < k_clusters * 2 * stride to have enough candidates.");
     }
@@ -404,7 +572,160 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     auto converted_neighbors = convert_neighbors(neighbors);
     size_t total_queries = query_embeddings.size();
 
-    // Pre-allocate final results
+    // Step 1: Flatten sparse IDs
+    std::cout << "[POST-PROCESS] Flattening candidates for " << total_queries << " queries." << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<size_t> sparse_ids;
+    std::vector<size_t> query_start_indices_sparse;
+
+    for (size_t i = 0; i < total_queries; ++i)
+    {
+        query_start_indices_sparse.push_back(sparse_ids.size());
+        size_t num_cands_per_query = (stride == 1)
+                                         ? std::min(k, converted_neighbors[i].size())
+                                         : std::min(k_clusters, converted_neighbors[i].size());
+        sparse_ids.insert(sparse_ids.end(),
+                          converted_neighbors[i].begin(),
+                          converted_neighbors[i].begin() + num_cands_per_query);
+    }
+    query_start_indices_sparse.push_back(sparse_ids.size());
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Flattening completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Get unique sequences + mapping (using dynamic lookup)
+    std::cout << "[POST-PROCESS] Fetching candidate sequences with deduplication." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    auto [unique_seqs, unique_dense_ids, mapping_to_unique] = find_sequences(ref_genome, sparse_ids, ref_len, stride);
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Fetching completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 3: Build query boundaries in expanded space
+    std::cout << "[POST-PROCESS] Building query boundaries." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<size_t> query_start_indices_expanded;
+    query_start_indices_expanded.reserve(total_queries + 1);
+    query_start_indices_expanded.push_back(0);
+
+    for (size_t q = 0; q < total_queries; ++q)
+    {
+        size_t sparse_start = query_start_indices_sparse[q];
+        size_t sparse_end = query_start_indices_sparse[q + 1];
+        size_t num_sparse = sparse_end - sparse_start;
+        size_t expansions = num_sparse * (2 * stride - 1);
+        query_start_indices_expanded.push_back(query_start_indices_expanded.back() + expansions);
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Boundary building completed in " << duration.count() << " ms" << std::endl;
+
+    // Early termination for stride == 1
+    if (stride == 1)
+    {
+        std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker" << std::endl;
+
+        std::vector<std::string> final_seqs;
+        std::vector<float> final_scores;
+        std::vector<size_t> final_ids;
+        final_seqs.reserve(total_queries * k);
+        final_scores.reserve(total_queries * k);
+        final_ids.reserve(total_queries * k);
+
+        for (size_t i = 0; i < total_queries; ++i)
+        {
+            size_t start_idx = query_start_indices_expanded[i];
+            size_t end_idx = query_start_indices_expanded[i + 1];
+            size_t actual_cands = std::min(k, end_idx - start_idx);
+
+            for (size_t j = 0; j < actual_cands; ++j)
+            {
+                size_t unique_idx = mapping_to_unique[start_idx + j];
+                final_seqs.push_back(unique_seqs[unique_idx]);
+                final_scores.push_back(distances[i][j]);
+                final_ids.push_back(unique_dense_ids[unique_idx]);
+            }
+        }
+
+        return {final_seqs, final_scores, final_ids};
+    }
+
+    // Step 4: Vectorize ONLY unique sequences
+    std::cout << "[POST-PROCESS] Vectorizing " << unique_seqs.size()
+              << " unique candidates (deduplicated from " << mapping_to_unique.size()
+              << " total expansions)." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    const size_t CHUNK_SIZE = Config::Postprocess::CHUNK_SIZE;
+    std::vector<std::vector<float>> unique_embeddings;
+    unique_embeddings.reserve(unique_seqs.size());
+
+    for (size_t chunk_start = 0; chunk_start < unique_seqs.size(); chunk_start += CHUNK_SIZE)
+    {
+        size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, unique_seqs.size());
+        std::vector<std::string> chunk(unique_seqs.begin() + chunk_start,
+                                       unique_seqs.begin() + chunk_end);
+        std::vector<std::vector<float>> chunk_embeddings = vectorizer.vectorize(chunk, false);
+        unique_embeddings.insert(unique_embeddings.end(),
+                                 chunk_embeddings.begin(),
+                                 chunk_embeddings.end());
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Vectorization completed in " << duration.count() << " ms" << std::endl;
+    std::cout << "[POST-PROCESS] Saved " << (mapping_to_unique.size() - unique_seqs.size())
+              << " redundant vectorizations!" << std::endl;
+
+    // Step 5: Expand data using mapping
+    std::cout << "[POST-PROCESS] Expanding data using mapping for batch reranker." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<std::string> expanded_seqs;
+    std::vector<size_t> expanded_ids;
+    std::vector<size_t> expand_embedding_ids;
+    expanded_seqs.reserve(mapping_to_unique.size());
+    expanded_ids.reserve(mapping_to_unique.size());
+    expand_embedding_ids.reserve(mapping_to_unique.size());
+
+    for (size_t unique_idx : mapping_to_unique)
+    {
+        expanded_seqs.push_back(unique_seqs[unique_idx]);
+        expanded_ids.push_back(unique_dense_ids[unique_idx]);
+        expand_embedding_ids.push_back(unique_idx);
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Expansion completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 6: Call batch_reranker with pre-computed embeddings
+    std::cout << "[POST-PROCESS] Running batched reranker with pre-computed embeddings." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    auto batch_results = batch_reranker(
+        expanded_seqs,
+        expanded_ids,
+        expand_embedding_ids,
+        unique_embeddings,
+        query_start_indices_expanded,
+        query_embeddings,
+        k);
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Reranking completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 7: Flatten results
+    std::cout << "[POST-PROCESS] Formatting final results." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
     std::vector<std::string> final_seqs;
     std::vector<float> final_scores;
     std::vector<size_t> final_ids;
@@ -412,146 +733,23 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     final_scores.reserve(total_queries * k);
     final_ids.reserve(total_queries * k);
 
-    // Configuration: Process queries in batches to avoid memory overflow
-    const size_t QUERY_BATCH_SIZE = Config::Postprocess::QUERY_BATCH_SIZE;
-    const size_t num_batches = (total_queries + QUERY_BATCH_SIZE - 1) / QUERY_BATCH_SIZE;
-
-    std::cout << "[POST-PROCESS] Processing " << total_queries << " queries in " << num_batches << " batches (size :" << QUERY_BATCH_SIZE << ")" << std::endl;
-
-    // Progress bar for batches
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar batchProgressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing query batches"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
-    for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx)
+    for (const auto &[seqs, scores, ids] : batch_results)
     {
-        size_t batch_start = batch_idx * QUERY_BATCH_SIZE;
-        size_t batch_end = std::min(batch_start + QUERY_BATCH_SIZE, total_queries);
-        size_t batch_size = batch_end - batch_start;
-
-        auto batch_start_time = std::chrono::high_resolution_clock::now();
-
-        // Step 1: Flatten sparse IDs for THIS BATCH
-        std::vector<size_t> sparse_ids;
-        std::vector<size_t> query_start_indices;
-        query_start_indices.reserve(batch_size + 1);
-
-        for (size_t i = batch_start; i < batch_end; ++i)
-        {
-            query_start_indices.push_back(sparse_ids.size());
-            size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
-            sparse_ids.insert(sparse_ids.end(),
-                              converted_neighbors[i].begin(),
-                              converted_neighbors[i].begin() + num_cands_per_query);
-        }
-        query_start_indices.push_back(sparse_ids.size()); // End marker
-
-        // Step 2: Fetch sequences for THIS BATCH
-        auto [all_cand_seqs, dense_ids] = find_sequences(ref_genome, sparse_ids, ref_len, stride);
-
-        // Step 2.5: Update query_start_indices after expansion
-        std::vector<size_t> expanded_query_start_indices;
-        expanded_query_start_indices.reserve(batch_size + 1);
-        expanded_query_start_indices.push_back(0);
-        
-        size_t dense_offset = 0;
-        for (size_t q = 0; q < batch_size; ++q)
-        {
-            size_t sparse_start = query_start_indices[q];
-            size_t sparse_end = query_start_indices[q + 1];
-            
-            for (size_t s = sparse_start; s < sparse_end; ++s)
-            {
-                size_t sparse_id = sparse_ids[s];
-                size_t actual_position = sparse_id * stride;
-                
-                if (actual_position >= ref_genome.size())
-                {
-                    continue;
-                }
-                
-                size_t start_pos = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
-                size_t end_pos = std::min(actual_position + stride, ref_genome.size());
-                size_t expansion_count = end_pos - start_pos;
-                
-                dense_offset += expansion_count;
-            }
-            expanded_query_start_indices.push_back(dense_offset);
-        }
-        
-        query_start_indices = expanded_query_start_indices;
-
-        // Early termination for stride == 1 (dense index)
-        if (stride == 1)
-        {
-            for (size_t i = 0; i < batch_size; ++i)
-            {
-                size_t global_idx = batch_start + i;
-                size_t start_idx = query_start_indices[i];
-                size_t end_idx = query_start_indices[i + 1];
-                size_t actual_cands = std::min(k, end_idx - start_idx);
-
-                for (size_t j = 0; j < actual_cands; ++j)
-                {
-                    final_seqs.push_back(all_cand_seqs[start_idx + j]);
-
-                    if (j >= distances[global_idx].size())
-                    {
-                        throw std::runtime_error("Mismatch in distances size for query " + std::to_string(global_idx));
-                    }
-
-                    final_scores.push_back(distances[global_idx][j]);
-                    final_ids.push_back(converted_neighbors[global_idx][j]);
-                }
-            }
-        }
-        else
-        {
-            // Step 3: Rerank THIS BATCH
-            // Extract batch embeddings
-            std::vector<std::vector<float>> batch_embeddings(
-                query_embeddings.begin() + batch_start,
-                query_embeddings.begin() + batch_end);
-
-            auto batch_results = batch_reranker(all_cand_seqs, dense_ids, query_start_indices, batch_embeddings, k, vectorizer);
-
-            // Step 4: Accumulate results from THIS BATCH
-            for (const auto &[seqs, scores, ids] : batch_results)
-            {
-                final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
-                final_scores.insert(final_scores.end(), scores.begin(), scores.end());
-                final_ids.insert(final_ids.end(), ids.begin(), ids.end());
-            }
-        }
-
-        // Free batch memory immediately
-        all_cand_seqs.clear();
-        all_cand_seqs.shrink_to_fit();
-        dense_ids.clear();
-        dense_ids.shrink_to_fit();
-
-        auto batch_end_time = std::chrono::high_resolution_clock::now();
-        auto batch_duration = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end_time - batch_start_time);
-
-        // Update batch progress bar
-        batchProgressBar.set_progress(((batch_idx + 1) * 100) / num_batches);
+        final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
+        final_scores.insert(final_scores.end(), scores.begin(), scores.end());
+        final_ids.insert(final_ids.end(), ids.begin(), ids.end());
     }
 
-    batchProgressBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    std::cout << "\n[POST-PROCESS] All batches completed!" << std::endl;
-    std::cout << "[POST-PROCESS] Total final sequences: " << final_seqs.size() << std::endl;
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Result formatting completed in " << duration.count() << " ms" << std::endl;
 
     return {final_seqs, final_scores, final_ids};
 }
 
 // L2 distance version with dynamic lookup with streaming output (templated)
 template <typename NeighborType>
-void post_process_l2_dynamic_streaming(  // Changed return type to void
+void post_process_l2_dynamic_streaming(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::string &ref_genome,
@@ -576,18 +774,155 @@ void post_process_l2_dynamic_streaming(  // Changed return type to void
     auto converted_neighbors = convert_neighbors(neighbors);
     size_t total_queries = query_embeddings.size();
 
-    // Configuration: Process queries in batches
+    // ========== GLOBAL DEDUPLICATION (Outside batching) ==========
+
+    // Step 1: Flatten ALL sparse IDs for ALL queries
+    std::cout << "[POST-PROCESS] Flattening candidates for " << total_queries << " queries." << std::endl;
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<size_t> sparse_ids;
+    std::vector<size_t> query_start_indices_sparse;
+
+    for (size_t i = 0; i < total_queries; ++i)
+    {
+        query_start_indices_sparse.push_back(sparse_ids.size());
+        size_t num_cands_per_query = (stride == 1)
+                                         ? std::min(k, converted_neighbors[i].size())
+                                         : std::min(k_clusters, converted_neighbors[i].size());
+        sparse_ids.insert(sparse_ids.end(),
+                          converted_neighbors[i].begin(),
+                          converted_neighbors[i].begin() + num_cands_per_query);
+    }
+    query_start_indices_sparse.push_back(sparse_ids.size());
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Flattening completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 2: Get unique sequences + mapping (GLOBAL deduplication across ALL queries)
+    std::cout << "[POST-PROCESS] Fetching candidate sequences with GLOBAL deduplication." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    auto [unique_seqs, unique_dense_ids, mapping_to_unique] = find_sequences(ref_genome, sparse_ids, ref_len, stride);
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Fetching completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 3: Build query boundaries in expanded space
+    std::cout << "[POST-PROCESS] Building query boundaries." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<size_t> query_start_indices_expanded;
+    query_start_indices_expanded.reserve(total_queries + 1);
+    query_start_indices_expanded.push_back(0);
+
+    for (size_t q = 0; q < total_queries; ++q)
+    {
+        size_t sparse_start = query_start_indices_sparse[q];
+        size_t sparse_end = query_start_indices_sparse[q + 1];
+        size_t num_sparse = sparse_end - sparse_start;
+        size_t expansions = num_sparse * (2 * stride - 1);
+        query_start_indices_expanded.push_back(query_start_indices_expanded.back() + expansions);
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Boundary building completed in " << duration.count() << " ms" << std::endl;
+
+    // Early termination for stride == 1 (dense index)
+    if (stride == 1)
+    {
+        std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker, streaming directly" << std::endl;
+
+        // Stream in batches to avoid memory overflow
+        const size_t QUERY_BATCH_SIZE = Config::Postprocess::QUERY_BATCH_SIZE;
+        const size_t num_batches = (total_queries + QUERY_BATCH_SIZE - 1) / QUERY_BATCH_SIZE;
+
+        indicators::show_console_cursor(false);
+        indicators::ProgressBar streamBar{
+            indicators::option::BarWidth{80},
+            indicators::option::PrefixText{"streaming results"},
+            indicators::option::ShowElapsedTime{true},
+            indicators::option::ShowRemainingTime{true}};
+
+        for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx)
+        {
+            size_t batch_start = batch_idx * QUERY_BATCH_SIZE;
+            size_t batch_end = std::min(batch_start + QUERY_BATCH_SIZE, total_queries);
+
+            std::vector<std::string> batch_seqs;
+            std::vector<float> batch_scores;
+            std::vector<size_t> batch_ids;
+
+            for (size_t i = batch_start; i < batch_end; ++i)
+            {
+                size_t start_idx = query_start_indices_expanded[i];
+                size_t end_idx = query_start_indices_expanded[i + 1];
+                size_t actual_cands = std::min(k, end_idx - start_idx);
+
+                for (size_t j = 0; j < actual_cands; ++j)
+                {
+                    size_t unique_idx = mapping_to_unique[start_idx + j];
+                    batch_seqs.push_back(unique_seqs[unique_idx]);
+                    batch_scores.push_back(distances[i][j]);
+                    batch_ids.push_back(unique_dense_ids[unique_idx]);
+                }
+            }
+
+            bool write_header = (batch_idx == 0);
+            write_sam_streaming(batch_seqs, batch_scores, query_seqs, query_ids, batch_ids,
+                                ref_name, ref_len, k, sam_file, batch_start, write_header);
+
+            streamBar.set_progress(((batch_idx + 1) * 100) / num_batches);
+        }
+
+        streamBar.set_progress(100);
+        indicators::show_console_cursor(true);
+        std::cout << "\n[POST-PROCESS] Streaming completed!" << std::endl;
+        return;
+    }
+
+    // ========== BATCHED VECTORIZATION & RERANKING (sparse index) ==========
+
+    // Step 4: Vectorize ONLY unique sequences (in chunks to avoid memory overflow)
+    std::cout << "[POST-PROCESS] Vectorizing " << unique_seqs.size()
+              << " unique candidates (deduplicated from " << mapping_to_unique.size()
+              << " total expansions)." << std::endl;
+    start_time = std::chrono::high_resolution_clock::now();
+
+    const size_t CHUNK_SIZE = Config::Postprocess::CHUNK_SIZE;
+    std::vector<std::vector<float>> unique_embeddings;
+    unique_embeddings.reserve(unique_seqs.size());
+
+    for (size_t chunk_start = 0; chunk_start < unique_seqs.size(); chunk_start += CHUNK_SIZE)
+    {
+        size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, unique_seqs.size());
+        std::vector<std::string> chunk(unique_seqs.begin() + chunk_start,
+                                       unique_seqs.begin() + chunk_end);
+        std::vector<std::vector<float>> chunk_embeddings = vectorizer.vectorize(chunk, false);
+        unique_embeddings.insert(unique_embeddings.end(),
+                                 chunk_embeddings.begin(),
+                                 chunk_embeddings.end());
+    }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Vectorization completed in " << duration.count() << " ms" << std::endl;
+    std::cout << "[POST-PROCESS] Saved " << (mapping_to_unique.size() - unique_seqs.size())
+              << " redundant vectorizations!" << std::endl;
+
+    // Step 5: Batch reranking and streaming
     const size_t QUERY_BATCH_SIZE = Config::Postprocess::QUERY_BATCH_SIZE;
     const size_t num_batches = (total_queries + QUERY_BATCH_SIZE - 1) / QUERY_BATCH_SIZE;
 
-    std::cout << "[POST-PROCESS] Processing " << total_queries << " queries in " << num_batches << " batches (size: " << QUERY_BATCH_SIZE << ")" << std::endl;
-    std::cout << "[POST-PROCESS] Streaming output to: " << sam_file << std::endl;
+    std::cout << "[POST-PROCESS] Reranking and streaming " << total_queries << " queries in "
+              << num_batches << " batches (size: " << QUERY_BATCH_SIZE << ")" << std::endl;
 
-    // Progress bar for batches
     indicators::show_console_cursor(false);
     indicators::ProgressBar batchProgressBar{
         indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing & streaming batches"},
+        indicators::option::PrefixText{"reranking & streaming batches"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
@@ -597,111 +932,83 @@ void post_process_l2_dynamic_streaming(  // Changed return type to void
         size_t batch_end = std::min(batch_start + QUERY_BATCH_SIZE, total_queries);
         size_t batch_size = batch_end - batch_start;
 
-        auto batch_start_time = std::chrono::high_resolution_clock::now();
+        // Build batch-specific query boundaries
+        std::vector<size_t> batch_query_boundaries;
+        batch_query_boundaries.reserve(batch_size + 1);
+        batch_query_boundaries.push_back(0);
 
-        // Step 1: Flatten sparse IDs for THIS BATCH
-        std::vector<size_t> sparse_ids;
-        std::vector<size_t> query_start_indices;
-        query_start_indices.reserve(batch_size + 1);
-
+        size_t offset = 0;
         for (size_t i = batch_start; i < batch_end; ++i)
         {
-            query_start_indices.push_back(sparse_ids.size());
-            size_t num_cands_per_query = std::min(k_clusters, converted_neighbors[i].size());
-            sparse_ids.insert(sparse_ids.end(),
-                              converted_neighbors[i].begin(),
-                              converted_neighbors[i].begin() + num_cands_per_query);
+            size_t num_cands = query_start_indices_expanded[i + 1] - query_start_indices_expanded[i];
+            offset += num_cands;
+            batch_query_boundaries.push_back(offset);
         }
-        query_start_indices.push_back(sparse_ids.size());
 
-        // Step 2: Fetch sequences for THIS BATCH
-        auto [all_cand_seqs, dense_ids] = find_sequences(ref_genome, sparse_ids, ref_len, stride);
+        // Extract batch query embeddings
+        std::vector<std::vector<float>> batch_query_embeddings(
+            query_embeddings.begin() + batch_start,
+            query_embeddings.begin() + batch_end);
 
-        // Step 2.5: Update query_start_indices after expansion
-        std::vector<size_t> expanded_query_start_indices;
-        expanded_query_start_indices.reserve(batch_size + 1);
-        expanded_query_start_indices.push_back(0);
-        
-        size_t dense_offset = 0;
-        for (size_t q = 0; q < batch_size; ++q)
-        {
-            size_t sparse_start = query_start_indices[q];
-            size_t sparse_end = query_start_indices[q + 1];
-            
-            for (size_t s = sparse_start; s < sparse_end; ++s)
-            {
-                size_t sparse_id = sparse_ids[s];
-                size_t actual_position = sparse_id * stride;
-                
-                if (actual_position >= ref_genome.size())
-                    continue;
-                
-                size_t start_pos = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
-                size_t end_pos = std::min(actual_position + stride, ref_genome.size());
-                dense_offset += (end_pos - start_pos);
-            }
-            expanded_query_start_indices.push_back(dense_offset);
-        }
-        
-        query_start_indices = expanded_query_start_indices;
+        // Expand to get all candidates in this batch
+        size_t batch_cand_start = query_start_indices_expanded[batch_start];
+        size_t batch_cand_end = query_start_indices_expanded[batch_end];
+        size_t batch_cand_count = batch_cand_end - batch_cand_start;
 
-        // Batch-level results
         std::vector<std::string> batch_seqs;
-        std::vector<float> batch_scores;
         std::vector<size_t> batch_ids;
-        batch_seqs.reserve(batch_size * k);
-        batch_scores.reserve(batch_size * k);
-        batch_ids.reserve(batch_size * k);
+        std::vector<size_t> batch_embedding_indices;
+        batch_seqs.reserve(batch_cand_count);
+        batch_ids.reserve(batch_cand_count);
+        batch_embedding_indices.reserve(batch_cand_count);
 
-        // Process based on stride
-        if (stride == 1)
+        for (size_t i = batch_cand_start; i < batch_cand_end; ++i)
         {
-            for (size_t i = 0; i < batch_size; ++i)
-            {
-                size_t global_idx = batch_start + i;
-                size_t start_idx = query_start_indices[i];
-                size_t end_idx = query_start_indices[i + 1];
-                size_t actual_cands = std::min(k, end_idx - start_idx);
-
-                for (size_t j = 0; j < actual_cands; ++j)
-                {
-                    batch_seqs.push_back(all_cand_seqs[start_idx + j]);
-                    batch_scores.push_back(distances[global_idx][j]);
-                    batch_ids.push_back(converted_neighbors[global_idx][j]);
-                }
-            }
-        }
-        else
-        {
-            // Step 3: Rerank THIS BATCH
-            std::vector<std::vector<float>> batch_embeddings(
-                query_embeddings.begin() + batch_start,
-                query_embeddings.begin() + batch_end);
-
-            auto batch_results = batch_reranker(all_cand_seqs, dense_ids, query_start_indices, batch_embeddings, k, vectorizer);
-
-            // Step 4: Flatten batch results
-            for (const auto &[seqs, scores, ids] : batch_results)
-            {
-                batch_seqs.insert(batch_seqs.end(), seqs.begin(), seqs.end());
-                batch_scores.insert(batch_scores.end(), scores.begin(), scores.end());
-                batch_ids.insert(batch_ids.end(), ids.begin(), ids.end());
-            }
+            size_t unique_idx = mapping_to_unique[i];
+            batch_seqs.push_back(unique_seqs[unique_idx]);
+            batch_ids.push_back(unique_dense_ids[unique_idx]);
+            batch_embedding_indices.push_back(unique_idx);
         }
 
-        // STREAM TO DISK IMMEDIATELY
-        bool write_header = (batch_idx == 0);
-        write_sam_streaming(batch_seqs, batch_scores, query_seqs, query_ids, batch_ids,
-                           ref_name, ref_len, k, sam_file, batch_start, write_header);
+        // Rerank batch
+        auto batch_results = batch_reranker(
+            batch_seqs,
+            batch_ids,
+            batch_embedding_indices,
+            unique_embeddings,
+            batch_query_boundaries,
+            batch_query_embeddings,
+            k);
 
-        // Free batch memory
-        all_cand_seqs.clear();
-        all_cand_seqs.shrink_to_fit();
         batch_seqs.clear();
         batch_seqs.shrink_to_fit();
+        batch_ids.clear();
+        batch_ids.shrink_to_fit();
+        batch_embedding_indices.clear();
+        batch_embedding_indices.shrink_to_fit();
 
-        auto batch_end_time = std::chrono::high_resolution_clock::now();
-        auto batch_duration = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end_time - batch_start_time);
+        // Flatten and stream results
+        std::vector<std::string> result_seqs;
+        std::vector<float> result_scores;
+        std::vector<size_t> result_ids;
+
+        for (const auto &[seqs, scores, ids] : batch_results)
+        {
+            result_seqs.insert(result_seqs.end(), seqs.begin(), seqs.end());
+            result_scores.insert(result_scores.end(), scores.begin(), scores.end());
+            result_ids.insert(result_ids.end(), ids.begin(), ids.end());
+        }
+
+        bool write_header = (batch_idx == 0);
+        write_sam_streaming(result_seqs, result_scores, query_seqs, query_ids, result_ids,
+                            ref_name, ref_len, k, sam_file, batch_start, write_header);
+
+        result_seqs.clear();
+        result_seqs.shrink_to_fit();
+        result_scores.clear();
+        result_scores.shrink_to_fit();
+        result_ids.clear();
+        result_ids.shrink_to_fit();
 
         batchProgressBar.set_progress(((batch_idx + 1) * 100) / num_batches);
     }
@@ -712,161 +1019,134 @@ void post_process_l2_dynamic_streaming(  // Changed return type to void
     std::cout << "\n[POST-PROCESS] All batches completed and streamed to disk!" << std::endl;
 }
 
-
-// L2 distance version with static lookup (templated)
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(
     const std::vector<std::vector<NeighborType>> &neighbors,
     const std::vector<std::vector<float>> &distances,
     const std::vector<std::string> &ref_seqs,
     const std::vector<std::string> &query_seqs,
-    size_t ref_len, size_t stride, size_t k,
+    size_t ref_len,
+    size_t stride,
+    size_t k,
     const std::vector<std::vector<float>> &query_embeddings,
-    Vectorizer &vectorizer, size_t k_clusters)
+    Vectorizer &vectorizer,
+    size_t k_clusters)
 {
-    std::cout << "[POST-PROCESS] Using static lookup & batched reranker" << std::endl;
-    std::cout << "[POST-PROCESS] Configs:" << std::endl;
-    std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
-    std::cout << "[POST-PROCESS] Neighbors type: " << typeid(NeighborType).name() << std::endl;
-
-    if (k > k_clusters * 2 * stride && stride > 1)
-    {
-        throw std::runtime_error("Final k too large. Ensure k < k_clusters * 2 * stride to have enough candidates.");
-    }
-
-    auto converted_neighbors = convert_neighbors(neighbors);
-    size_t total_queries = query_embeddings.size();
-
-    // Step 1: Flatten all neighbor indices into a contiguous array and build mapping to track original query-cand pairs
-    std::cout << "[POST-PROCESS] Flattening candidates for " << total_queries << " queries." << std::endl;
     auto start_time = std::chrono::high_resolution_clock::now();
+    std::cout << "[POST-PROCESS] Starting post-processing with L2 reranker (static lookup)" << std::endl;
 
-    std::vector<size_t> sparse_ids;
-    std::vector<size_t> query_start_indices;
-
-    // Take top candidates per query to limit workload
-    for (size_t i = 0; i < total_queries; ++i)
+    // Step 1: Collect all neighbor IDs
+    std::vector<size_t> all_neighbor_ids;
+    size_t total_neighbors = 0;
+    for (const auto &neighbor_vec : neighbors)
     {
-        query_start_indices.push_back(sparse_ids.size());
-
-        // For dense index (stride==1), use k directly since no reranking needed
-        // For sparse index (stride>1), use k_clusters to limit reranking workload
-        size_t num_cands_per_query = (stride == 1)
-                                         ? std::min(k, converted_neighbors[i].size())
-                                         : std::min(k_clusters, converted_neighbors[i].size());
-
-        sparse_ids.insert(sparse_ids.end(),
-                          converted_neighbors[i].begin(),
-                          converted_neighbors[i].begin() + num_cands_per_query);
+        total_neighbors += neighbor_vec.size();
     }
-    query_start_indices.push_back(sparse_ids.size()); // End marker
+    all_neighbor_ids.reserve(total_neighbors);
 
+    for (const auto &neighbor_vec : neighbors)
+    {
+        for (const auto &neighbor : neighbor_vec)
+        {
+            all_neighbor_ids.push_back(static_cast<size_t>(neighbor));
+        }
+    }
+
+    std::cout << "[POST-PROCESS] Collected " << all_neighbor_ids.size() << " neighbor IDs from " << neighbors.size() << " queries" << std::endl;
+
+    // Step 2: Fetch sequences with deduplication
+    start_time = std::chrono::high_resolution_clock::now();
+    auto [unique_seqs, dense_ids, mapping_ids] = find_sequences(ref_seqs, all_neighbor_ids, stride);
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    std::cout << "[POST-PROCESS] Flattening completed in " << duration.count() << " ms" << std::endl;
 
-    // Step 2: Single call to find_sequences for ALL candidates
-    std::cout << "[POST-PROCESS] Fetching all candidate sequences." << std::endl;
-    start_time = std::chrono::high_resolution_clock::now();
-    auto [all_cand_seqs, dense_ids] = find_sequences(ref_seqs, sparse_ids, stride);
-
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Fetching completed in " << duration.count() << " ms" << std::endl;
 
-    // Step 2.5: Update query_start_indices
-    std::cout << "[POST-PROCESS] Adjusting query start indices after dynamic expansion." << std::endl;
+    // Step 3: Build query boundaries
     start_time = std::chrono::high_resolution_clock::now();
-    std::vector<size_t> expanded_query_start_indices;
-    expanded_query_start_indices.reserve(query_seqs.size() + 1);
-    expanded_query_start_indices.push_back(0);
-    
-    size_t dense_offset = 0;
-    for (size_t q = 0; q < query_seqs.size(); ++q)
+    std::vector<size_t> query_start_indices;
+    query_start_indices.reserve(neighbors.size() + 1);
+    size_t cumulative = 0;
+    for (const auto &neighbor_vec : neighbors)
     {
-        size_t sparse_start = query_start_indices[q];
-        size_t sparse_end = query_start_indices[q + 1];
-        
-        // Calculate how many dense candidates this query got
-        for (size_t s = sparse_start; s < sparse_end; ++s)
-        {
-            size_t sparse_id = sparse_ids[s];
-            size_t actual_position = sparse_id * stride;
-            
-            // Calculate expansion for this sparse ID (same logic as find_sequences)
-            size_t start_pos = (actual_position >= stride - 1) ? actual_position - stride + 1 : 0;
-            size_t end_pos = std::min(actual_position + stride, ref_seqs.size());
-            size_t expansion_count = end_pos - start_pos;
-            
-            dense_offset += expansion_count;
-        }
-        expanded_query_start_indices.push_back(dense_offset);
+        query_start_indices.push_back(cumulative);
+        cumulative += neighbor_vec.size() * (stride > 1 ? stride : 1);
     }
-    
-    // Replace old indices
-    query_start_indices = expanded_query_start_indices;
-    
+    query_start_indices.push_back(cumulative);
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    std::cout << "[POST-PROCESS] Adjustment completed in " << duration.count() << " ms" << std::endl;
-        
+    std::cout << "[POST-PROCESS] Boundary building completed in " << duration.count() << " ms" << std::endl;
 
-    // Early termination for stride == 1 (dense index)
-    if (stride == 1)
+    // Step 4: Vectorize unique sequences
+    start_time = std::chrono::high_resolution_clock::now();
+    size_t total_expansions = mapping_ids.size();
+    std::cout << "[POST-PROCESS] Vectorizing " << unique_seqs.size() << " unique candidates (deduplicated from " << total_expansions << " total expansions)." << std::endl;
+    std::vector<std::vector<float>> unique_embeddings = vectorizer.vectorize(unique_seqs, false);
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Vectorization completed in " << duration.count() << " ms" << std::endl;
+    std::cout << "[POST-PROCESS] Saved " << (total_expansions - unique_seqs.size()) << " redundant vectorizations!" << std::endl;
+
+    // Step 5: Expand embeddings and sequences using mapping_ids
+    start_time = std::chrono::high_resolution_clock::now();
+    std::cout << "[POST-PROCESS] Expanding sequences using mapping_ids." << std::endl;
+
+    std::vector<std::string> cand_seqs;
+    std::vector<size_t> expand_cand_ids;
+    std::vector<size_t> cand_embedding_ids;
+
+    cand_seqs.reserve(mapping_ids.size());
+    expand_cand_ids.reserve(mapping_ids.size());
+    cand_embedding_ids.reserve(mapping_ids.size());
+
+    for (size_t i = 0; i < mapping_ids.size(); ++i)
     {
-        std::cout << "[POST-PROCESS] stride == 1 (dense), skipping reranker" << std::endl;
+        size_t unique_idx = mapping_ids[i];
 
-        std::vector<std::string> final_seqs;
-        std::vector<float> final_scores;
-        std::vector<size_t> final_ids;
-        final_seqs.reserve(total_queries * k);
-        final_scores.reserve(total_queries * k);
-        final_ids.reserve(total_queries * k);
-
-        for (size_t i = 0; i < total_queries; ++i)
+        if (unique_idx >= unique_embeddings.size())
         {
-            size_t start_idx = query_start_indices[i];
-            size_t end_idx = query_start_indices[i + 1];
-            size_t actual_cands = std::min(k, end_idx - start_idx);
-
-            // Use start_idx to index into all_cand_seqs properly
-            for (size_t j = 0; j < actual_cands; ++j)
-            {
-                final_seqs.push_back(all_cand_seqs[start_idx + j]);
-
-                if (j >= distances[i].size())
-                {
-                    throw std::runtime_error("Mismatch in distances size for query " + std::to_string(i));
-                }
-
-                final_scores.push_back(distances[i][j]);
-                final_ids.push_back(converted_neighbors[i][j]);
-            }
+            std::cerr << "[POST-PROCESS] Invalid mapping at i=" << i << ": unique_idx=" << unique_idx
+                      << " >= unique_embeddings.size()=" << unique_embeddings.size() << std::endl;
+            throw std::runtime_error("Invalid mapping index in expansion");
         }
 
-        return {final_seqs, final_scores, final_ids};
+        cand_seqs.push_back(unique_seqs[unique_idx]);
+        expand_cand_ids.push_back(dense_ids[unique_idx]);
+        cand_embedding_ids.push_back(unique_idx);
     }
 
-    // Step 3: Pass flattened data to a batch_reranker (for stride > 1)
-    std::cout << "[POST-PROCESS] Running batched reranker for all queries." << std::endl;
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "[POST-PROCESS] Expansion completed in " << duration.count() << " ms" << std::endl;
+
+    // Step 6: Batch rerank
     start_time = std::chrono::high_resolution_clock::now();
-    auto batch_results = batch_reranker(all_cand_seqs, dense_ids, query_start_indices, query_embeddings, k, vectorizer);
+    std::cout << "[POST-PROCESS] Running batched reranker with pre-computed embeddings." << std::endl;
+    auto results = batch_reranker(
+        cand_seqs,
+        expand_cand_ids,
+        cand_embedding_ids,
+        unique_embeddings,
+        query_start_indices,
+        query_embeddings,
+        k_clusters);
+
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "[POST-PROCESS] Reranking completed in " << duration.count() << " ms" << std::endl;
 
-    // Step 4: Flatten results in 3 vectors
-    std::cout << "[POST-PROCESS] Format final results into 3 flat arrays (sequences, scores, ids)." << std::endl;
+    // Step 7: Flatten results
+    std::cout << "[POST-PROCESS] Formatting final results." << std::endl;
     start_time = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> final_seqs;
     std::vector<float> final_scores;
     std::vector<size_t> final_ids;
-    final_seqs.reserve(total_queries * k);
-    final_scores.reserve(total_queries * k);
-    final_ids.reserve(total_queries * k);
+    final_seqs.reserve(results.size() * k);
+    final_scores.reserve(results.size() * k);
+    final_ids.reserve(results.size() * k);
 
-    for (const auto &[seqs, scores, ids] : batch_results)
+    for (const auto &[seqs, scores, ids] : results)
     {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());

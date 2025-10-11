@@ -50,15 +50,15 @@ std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_
 /// @param ids Vector of ids to find
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
-/// @return Vector of sequences found, in the same order as ids
-std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(const std::string &ref_genome, const std::vector<size_t> &sparse_ids, size_t ref_len, size_t stride = 1);
+/// @return Vector of sequences found, in the same order as ids, along with their dense IDs and mapping indices to the unique pool
+std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(const std::string &ref_genome, const std::vector<size_t> &sparse_ids, size_t ref_len, size_t stride = 1);
 
 /// @brief Wrapper to find multiple sequences asynchronously from static reference sequences (Overload for static fetching)
 /// @param ref_seqs Vector of reference sequences
 /// @param ids Vector of ids to find
 /// @param stride In case of FASTA preprocessing with stride, used to compute actual positions
-/// @return Vector of sequences found, in the same order as ids
-std::pair<std::vector<std::string>, std::vector<size_t>> find_sequences(const std::vector<std::string> &ref_seqs, const std::vector<size_t> &sparse_ids, size_t stride = 1);
+/// @return Vector of sequences found, in the same order as ids, along with their dense IDs and mapping indices to the unique pool
+std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(const std::vector<std::string> &ref_seqs, const std::vector<size_t> &sparse_ids, size_t stride = 1);
 
 /// @brief Helper function to convert neighbor types to size_t
 template <typename NeighborType>

@@ -5,23 +5,8 @@
 #include "vectorize.hpp"
 #include <filesystem>
 
-int main(int argc, char *argv[])
+int main()
 {
-    // Run with ./test_postprocess /home/tam/tam-store/hnswpq_results/ecoli_10000.hifi/neighbors.npy /home/tam/tam-store/hnswpq_results/ecoli_10000.hifi/distances.npy /home/tam/tam-store/data/long_fastq/ecoli/hifi/10000/ecoli_10000.hifi.fastq /home/tam/tam-store/data/fasta/ecoli.fna 128 0
-
-
-    if (argc < 5 || argc > 7)
-    {
-        std::cerr << "Usage: " << argv[0] << " <indices.npy> <distances.npy> <quer_seqs.fastq> <ref_seqs.fasta> [K] [use_dynamic]" << std::endl;
-        std::cerr << "  - indices.npy: Path to saved neighbor indices from HNSW search" << std::endl;
-        std::cerr << "  - distances.npy: Path to saved distances from HNSW search" << std::endl;
-        std::cerr << "  - quer_seqs.fastq: Query sequences file" << std::endl;
-        std::cerr << "  - ref_seqs.fasta: Reference sequences file" << std::endl;
-        std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")" << std::endl;
-        std::cerr << "  - use_dynamic: Optional flag to load reference sequences dynamically (1) or statically (0). Default: 0" << std::endl;
-        return 1;
-    }
-
     try
     {
         auto master_start = std::chrono::high_resolution_clock::now();
@@ -29,14 +14,16 @@ int main(int argc, char *argv[])
                   << std::endl;
 
         // Read from command line arguments
-        const std::string indices_file = argv[1];
-        const std::string distances_file = argv[2];
-        const std::string query_seqs_file = argv[3];
-        const std::string ref_seqs_file = argv[4];
+        const std::string indices_file = "/home/tam/tam-store3/temp_output/ecoli_150_sparse/indices.npy";
+        const std::string distances_file = "/home/tam/tam-store3/temp_output/ecoli_150_sparse/distances.npy";
+        const std::string query_seqs_file = "/mnt/7T-ssdD/species-datasets/ecoli/ecoli_150/ecoli_150.fastq";
+
+        const std::string ref_seqs_file = "/mnt/7T-ssdD/species-datasets/fasta_source/ecoli.fna";
 
         // Optional parameters
-        const int k = (argc >= 6) ? std::stoi(argv[5]) : Config::Search::K;
-        const bool use_dynamic = (argc >= 7) ? (std::stoi(argv[6]) != 0) : false;
+        const int k = 20;
+        const int k_clusters = 15;
+        const bool use_dynamic = false;
 
         // Config inference parameters (needed for reranking)
         const std::string model_path = Config::Inference::MODEL_PATH;
@@ -45,7 +32,7 @@ int main(int argc, char *argv[])
         const size_t model_out_size = Config::Inference::MODEL_OUT_SIZE;
 
         // Load index config (fixed for debug)
-        std::string index_dir = "/home/tam/tam-store/hnswpq_index/ecoli_10000";
+        std::string index_dir = "/home/tam/tam-store/sparse_index/ecoli_150";
         std::string config_file = index_dir + "/config.txt";
 
         size_t ref_len, stride;
@@ -147,71 +134,58 @@ int main(int argc, char *argv[])
         std::cout << "[TEST] LOADING REFERENCE SEQUENCES" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        std::string ref_genome = "";
         std::vector<std::string> ref_sequences = {};
-
-        if (use_dynamic)
-        {
-            std::cout << "[TEST] Using DYNAMIC fetching for reference sequences" << std::endl;
-            ref_genome = extract_FASTA_sequence(ref_seqs_file);
-        }
-        else
-        {
-            std::cout << "[TEST] Using STATIC fetching for reference sequences" << std::endl;
-            ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
-            std::cout << "[TEST] Loaded " << ref_sequences.size() << " reference sequences" << std::endl;
-        }
+        std::cout << "[TEST] Using STATIC fetching for reference sequences" << std::endl;
+        ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
+        std::cout << "[TEST] Loaded " << ref_sequences.size() << " reference sequences" << std::endl;
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "[TEST] Reference loading time: " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        // Initialize vectorizer for reranking
-        std::cout << "[TEST] INITIALIZING VECTORIZER" << std::endl;
+        // Replace everything from line 153 onwards with this:
+
+        // ============================================================
+        // SIMPLIFIED: Call post_process_l2_static directly
+        // ============================================================
+        std::cout << "[TEST] CALLING post_process_l2_static DIRECTLY" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
+        // Initialize vectorizer
         Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
 
-        // Generate query embeddings for reranking
-        std::vector<std::vector<float>> embeddings = vectorizer.vectorize(query_sequences);
+        // Vectorize queries
+        std::vector<std::vector<float>> query_embeddings = vectorizer.vectorize(query_sequences);
+
+        std::cout << "[TEST] Query embeddings: " << query_embeddings.size() << " x " << query_embeddings[0].size() << std::endl;
+
+        // Call post_process_l2_static (it handles everything internally!)
+        auto [final_seqs, final_dists, final_ids] = post_process_l2_static(
+            neighbors,
+            distances,
+            ref_sequences,
+            query_sequences,
+            ref_len,
+            stride,
+            k,
+            query_embeddings,
+            vectorizer,
+            k_clusters);
 
         end_time = std::chrono::high_resolution_clock::now();
         duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[TEST] Vectorization time: " << duration.count() << " ms" << std::endl
+        std::cout << "[TEST] post_process_l2_static completed in " << duration.count() << " ms" << std::endl
                   << std::endl;
 
-        // Run post-processing
-        std::cout << "[TEST] POST-PROCESSING STEP" << std::endl;
-        start_time = std::chrono::high_resolution_clock::now();
-
-        std::vector<std::string> final_seqs;
-        std::vector<float> final_dists;
-        std::vector<size_t> final_ids;
-
-        int rerank_lim = Config::Postprocess::RERANK_LIM;
-
-        if (use_dynamic)
-        {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(
-                neighbors, distances, ref_genome, query_sequences,
-                ref_len, stride, k, embeddings, vectorizer, rerank_lim);
-        }
-        else
-        {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(
-                neighbors, distances, ref_sequences, query_sequences,
-                ref_len, stride, k, embeddings, vectorizer, rerank_lim);
-        }
-
-        end_time = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[TEST] Post-processing time: " << duration.count() << " ms" << std::endl
-                  << std::endl;
+        // ============================================================
+        // VERIFY FINAL RESULTS
+        // ============================================================
+        std::cout << "[TEST] VERIFYING FINAL RESULTS" << std::endl;
 
         // Print first few results for verification
-        std::cout << "[TEST] SAMPLE RESULTS (first 3 queries, first 5 candidates each):" << std::endl;
-        for (size_t i = 0; i < std::min(size_t(3), query_sequences.size()); ++i)
+        std::cout << "[TEST] Sample results (first 3 queries, first 5 candidates each):" << std::endl;
+        for (size_t i = 0; i < std::min(size_t(3), num_queries); ++i)
         {
             std::cout << "Query " << i << " - reranked candidates:" << std::endl;
             for (size_t j = 0; j < std::min(size_t(5), size_t(k)); ++j)
@@ -220,32 +194,17 @@ int main(int argc, char *argv[])
                 if (idx < final_seqs.size())
                 {
                     std::cout << "  Cand " << j << ": ID=" << final_ids[idx]
-                              << ", Distance=" << final_dists[idx]
-                              << ", Seq=" << final_seqs[idx].substr(0, 50) << "..." << std::endl;
+                              << ", L2_Distance=" << final_dists[idx]
+                              << ", Seq=" << final_seqs[idx].substr(0, 50) << std::endl;
                 }
             }
         }
         std::cout << std::endl;
 
-        // Print shape of post-processed results
-        std::cout << "[TEST] Post-processed results shape: [" << final_seqs.size() << ", " << (final_seqs.empty() ? 0 : final_seqs[0].size()) << "]" << std::endl
-                  << std::endl;
-
-        std::cout << "[TEST] Distance shape: [" << final_dists.size() << ", " << (final_dists.empty() ? 0 : 1) << "]" << std::endl;
-        std::cout << "[TEST] IDs shape: [" << final_ids.size() << ", " << (final_ids.empty() ? 0 : 1) << "]" << std::endl
-                  << std::endl;
-
-        // Save results to SAM format
-        std::cout << "[TEST] SAVING RESULTS TO SAM" << std::endl;
-        start_time = std::chrono::high_resolution_clock::now();
-
-        std::string sam_file = "./results.sam";
-        write_sam(final_seqs, final_dists, query_sequences, final_ids, "ref", ref_len, k, sam_file);
-
-        end_time = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "[TEST] SAM output time: " << duration.count() << " ms" << std::endl;
-        std::cout << "[TEST] Results saved to: " << sam_file << std::endl
+        std::cout << "[TEST] Final results shape:" << std::endl;
+        std::cout << "  Sequences: " << final_seqs.size() << std::endl;
+        std::cout << "  Distances: " << final_dists.size() << std::endl;
+        std::cout << "  IDs: " << final_ids.size() << std::endl
                   << std::endl;
 
         auto master_end = std::chrono::high_resolution_clock::now();

@@ -45,15 +45,14 @@ namespace Config
         constexpr const int BATCH_SIZE = 128;      // Number of queries per batch
         constexpr const int EF = 128;              // Search params. Higher EF -> more precise but slower
         constexpr const int K = 128;               // Top K results to return, K <= EF
-        constexpr const int K_CLUSTERS = 15;       // [Sparse Index] Number of clusters (sparse candidates) to search for each query, K <= K_CLUSTERS * 2 * stride & K_CLUSTERS <= EF
+        constexpr const int K_CLUSTERS = 5;        // [Sparse Index] Number of clusters (sparse candidates) to search for each query, K <= K_CLUSTERS * 2 * stride & K_CLUSTERS <= EF
         constexpr const int NUM_THREADS = 128;     // Number of threads for parallel search
     }
 
     namespace Postprocess
     {
-        constexpr const int NUM_THREADS = 128; // Number of threads for parallel post-processing and reranking
-        constexpr const int CHUNK_SIZE = 200000; // Number of queries per batch during L2 reranking
-        constexpr const size_t QUERY_BATCH_SIZE = 10000; // Number of queries to process in a batch during post-processing
+        constexpr const int NUM_THREADS = 128;            // Number of threads for parallel post-processing and reranking
+        constexpr const int CHUNK_SIZE = 10000000;        // Number of candidates per batch during L2 reranking (deprecated)
+        constexpr const size_t QUERY_BATCH_SIZE = 5000; // Number of queries to process in a batch during post-processing
     }
-
 }

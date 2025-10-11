@@ -96,73 +96,25 @@ std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::v
 }
 
 std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> batch_reranker(
-    const std::vector<std::string> &all_cand_seqs,
-    const std::vector<size_t> &all_neighbor_indices,
-    const std::vector<size_t> &query_start_indices,
+    const std::vector<std::string> &cand_seqs,
+    const std::vector<size_t> &dense_ids,
+    const std::vector<size_t> &cand_embedding_ids,
+    const std::vector<std::vector<float>> &cand_embeddings,
+    const std::vector<size_t> &query_start_ids,
     const std::vector<std::vector<float>> &query_embeddings,
-    size_t k,
-    Vectorizer &vectorizer)
+    size_t k)
 {
-    // Configuration: Process candidates in chunks to avoid memory overflow
-    const size_t CHUNK_SIZE = Config::Postprocess::CHUNK_SIZE;
-
-    std::cout << "[BATCH-RERANKER] Vectorizing " << all_cand_seqs.size() << " candidate sequences in chunks of " << CHUNK_SIZE << std::endl;
-
-    // Step 1: Vectorize ALL candidates in chunks
-    std::vector<std::vector<float>> all_cand_embeddings;
-    all_cand_embeddings.reserve(all_cand_seqs.size());
-
-    size_t total_chunks = (all_cand_seqs.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    std::atomic<size_t> completed_chunks(0);
-
-    std::cout << "[BATCH-RERANKER] Processing " << total_chunks << " chunks..." << std::endl;
-
-    // Hide cursor and create progress bar for vectorization
-    indicators::show_console_cursor(false);
-    indicators::ProgressBar vectorizationBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"vectorizing candidate chunks"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
-
-    for (size_t chunk_start = 0; chunk_start < all_cand_seqs.size(); chunk_start += CHUNK_SIZE)
-    {
-        size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, all_cand_seqs.size());
-
-        // Create chunk view
-        std::vector<std::string> chunk(all_cand_seqs.begin() + chunk_start,
-                                       all_cand_seqs.begin() + chunk_end);
-
-        // Vectorize this chunk
-        std::vector<std::vector<float>> chunk_embeddings = vectorizer.vectorize(chunk, false);
-
-        // Append to results
-        all_cand_embeddings.insert(all_cand_embeddings.end(),
-                                   chunk_embeddings.begin(),
-                                   chunk_embeddings.end());
-
-        // Update progress bar
-        size_t current_completed = completed_chunks.fetch_add(1) + 1;
-        size_t current_progress_percent = (current_completed * 100) / total_chunks;
-        vectorizationBar.set_progress(current_progress_percent);
-    }
-
-    // Complete vectorization progress bar
-    vectorizationBar.set_progress(100);
-    indicators::show_console_cursor(true);
-
-    std::cout << "[BATCH-RERANKER] Finished vectorizing " << all_cand_embeddings.size() << " candidate sequences" << std::endl;
-
-    // Step 2: Pre-allocate results vector
-    std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> results(query_embeddings.size());
-
-    // Progress tracking variables (thread-safe)
+    // Progress tracking
     std::atomic<size_t> completed_queries{0};
     const size_t total_queries = query_embeddings.size();
 
-    std::cout << "[BATCH-RERANKER] Reranking " << total_queries << " queries..." << std::endl;
+    std::cout << "[BATCH-RERANKER] Reranking " << total_queries << " queries with "
+              << cand_embeddings.size() << " global embeddings (using indices)" << std::endl;
 
-    // Hide cursor and create progress bar for reranking
+    // Pre-allocate results
+    std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> results(query_embeddings.size());
+
+    // Progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar rerankingBar{
         indicators::option::BarWidth{80},
@@ -173,45 +125,45 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
 #pragma omp parallel for num_threads(Config::Postprocess::NUM_THREADS) schedule(dynamic)
     for (size_t q = 0; q < query_embeddings.size(); ++q)
     {
-        size_t start_idx = query_start_indices[q];
-        size_t end_idx = query_start_indices[q + 1];
+        size_t start_idx = query_start_ids[q];
+        size_t end_idx = query_start_ids[q + 1];
         size_t num_cands = end_idx - start_idx;
 
         if (num_cands == 0)
         {
             results[q] = {{}, {}, {}};
-
-            // Update progress atomically
             size_t current_completed = completed_queries.fetch_add(1) + 1;
             if (current_completed % 1000 == 0 || current_completed == total_queries)
             {
-                size_t progress_percent = (current_completed * 100) / total_queries;
-                rerankingBar.set_progress(progress_percent);
+                rerankingBar.set_progress((current_completed * 100) / total_queries);
             }
             continue;
         }
 
-        // Calculate L2 distances for this query
+        // Calculate L2 distances using ids
         std::vector<float> l2_dists;
         l2_dists.reserve(num_cands);
+        
         for (size_t i = start_idx; i < end_idx; ++i)
         {
-            float dist = calc_l2_dist(all_cand_embeddings[i], query_embeddings[q]);
+            size_t emb_idx = cand_embedding_ids[i];
+            const auto &cand_emb = cand_embeddings[emb_idx];
+            float dist = calc_l2_dist(cand_emb, query_embeddings[q]);
             l2_dists.push_back(dist);
         }
 
         // Sort and get top k
         if (num_cands < k)
         {
-            throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + " < " + std::to_string(k) + ") for query " + std::to_string(q));
+            throw std::runtime_error("Not enough candidates (" + std::to_string(num_cands) + 
+                                   " < " + std::to_string(k) + ") for query " + std::to_string(q));
         }
 
         std::vector<size_t> indices(num_cands);
         std::iota(indices.begin(), indices.end(), 0);
 
         std::partial_sort(indices.begin(), indices.begin() + k, indices.end(),
-                          [&l2_dists](size_t i1, size_t i2)
-                          { return l2_dists[i1] < l2_dists[i2]; });
+                          [&l2_dists](size_t i1, size_t i2) { return l2_dists[i1] < l2_dists[i2]; });
 
         std::vector<std::string> top_seqs;
         std::vector<float> top_dists;
@@ -222,23 +174,21 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
 
         for (size_t i = 0; i < k; ++i)
         {
-            top_seqs.push_back(all_cand_seqs[start_idx + indices[i]]);
+            top_seqs.push_back(cand_seqs[start_idx + indices[i]]);
             top_dists.push_back(l2_dists[indices[i]]);
-            top_ids.push_back(all_neighbor_indices[start_idx + indices[i]]);
+            top_ids.push_back(dense_ids[start_idx + indices[i]]);
         }
 
         results[q] = {top_seqs, top_dists, top_ids};
 
-        // Update progress atomically
+        // Update progress
         size_t current_completed = completed_queries.fetch_add(1) + 1;
         if (current_completed % 1000 == 0 || current_completed == total_queries)
         {
-            size_t progress_percent = (current_completed * 100) / total_queries;
-            rerankingBar.set_progress(progress_percent);
+            rerankingBar.set_progress((current_completed * 100) / total_queries);
         }
     }
 
-    // Complete reranking progress bar and show cursor
     rerankingBar.set_progress(100);
     indicators::show_console_cursor(true);
 
