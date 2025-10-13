@@ -871,8 +871,9 @@ void post_process_l2_dynamic_streaming(
             }
 
             bool write_header = (batch_idx == 0);
+            size_t batch_size = batch_end - batch_start;
             write_sam_streaming(batch_seqs, batch_scores, query_seqs, query_ids, batch_ids,
-                                ref_name, ref_len, k, sam_file, batch_start, write_header);
+                                ref_name, ref_len, k, sam_file, batch_start, write_header, batch_size);
 
             streamBar.set_progress(((batch_idx + 1) * 100) / num_batches);
         }

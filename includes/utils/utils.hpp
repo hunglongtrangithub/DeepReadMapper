@@ -95,7 +95,9 @@ void write_sam_streaming(
     size_t k,
     const std::string &sam_file,
     size_t query_offset = 0,
-    bool write_header = false);
+    bool write_header = false,
+    size_t batch_query_count = 0
+    );
 
 using ConfigValue = std::variant<size_t, float, std::string>;
 

@@ -53,9 +53,12 @@ int main(int argc, char *argv[])
         const int ef = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::EF;
         const int k = (argc >= 6) ? std::stoi(argv[5]) : Config::Search::K;
         int k_clusters = Config::Search::K_CLUSTERS;
-        if (stride == 1) {
+        if (stride == 1)
+        {
             k_clusters = k;
-        } else if (argc >= 7) {
+        }
+        else if (argc >= 7)
+        {
             k_clusters = std::stoi(argv[6]);
         };
 
@@ -84,7 +87,7 @@ int main(int argc, char *argv[])
         // Read sequences from file
         std::cout << "[MAIN] DATA LOADING STEP" << std::endl;
         std::cout << "[MAIN] Reading sequences from Disk" << std::endl;
-        
+
         // Main Pipeline = FASTQ + Vectorize + HNSW Search + Post-process + Output
         int main_pipeline_time = 0; // ms
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -218,21 +221,21 @@ int main(int argc, char *argv[])
         std::vector<int> final_sw_scores; // For SW reranking
 
         //* L2 distance reranking
-        if (use_dynamic)
-        {
-            if (use_streaming) {
-                std::cout << "[MAIN] Using STREAMING output to SAM file: " << sam_file << std::endl;
-                post_process_l2_dynamic_streaming(neighbors, distances, ref_genome, query_sequences, query_ids, ref_len, stride, k, embeddings, vectorizer, k_clusters, sam_file, "ref");
-                // Skip the rest of the post-processing and output saving
-            } else {
-                std::cout << "[MAIN] Using NORMAL output to SAM file: " << sam_file << std::endl;
-                std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
-            }
-        }
-        else
-        {
-            std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
-        }
+        // if (use_dynamic)
+        // {
+        //     if (use_streaming) {
+        //         std::cout << "[MAIN] Using STREAMING output to SAM file: " << sam_file << std::endl;
+        //         post_process_l2_dynamic_streaming(neighbors, distances, ref_genome, query_sequences, query_ids, ref_len, stride, k, embeddings, vectorizer, k_clusters, sam_file, "ref");
+        //         // Skip the rest of the post-processing and output saving
+        //     } else {
+        //         std::cout << "[MAIN] Using NORMAL output to SAM file: " << sam_file << std::endl;
+        //         std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
+        //     }
+        // }
+        // else
+        // {
+        //     std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, vectorizer, k_clusters);
+        // }
 
         //* Smith-Waterman reranking
         // if (use_dynamic)
@@ -267,27 +270,35 @@ int main(int argc, char *argv[])
         std::cout << "[MAIN] OUTPUT SAVING STEP" << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
-        if (!use_streaming) {
+        if (!use_streaming)
+        {
 
-        // bool use_npy = true;
-        // std::string indices_file = output_dir + "/indices.npy";
-        // std::string distances_file = output_dir + "/distances.npy";
-        // save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+            bool use_npy = true;
+            std::string indices_file = output_dir + "/indices.npy";
+            std::string distances_file = output_dir + "/distances.npy";
 
-        // Print length of final_seqs for verification
-        std::cout << "[MAIN] Total final sequences: " << final_seqs.size() << std::endl;
-        std::cout << "[MAIN] Total query sequences: " << query_sequences.size() << std::endl;
-        std::cout << "[MAIN] Total query IDs: " << query_ids.size() << std::endl;
-        std::cout << "[MAIN] Total candidate IDs: " << final_ids.size() << std::endl;
+            if (stride == 1)
+            {
+                save_results(neighbors, distances, indices_file, distances_file, k, use_npy);
+            }
+            else
+            {
+                save_results(neighbors, distances, indices_file, distances_file, k_clusters, use_npy);
+            }
 
-        write_sam(final_seqs, final_dists, query_sequences, query_ids, final_ids, "ref", ref_len, k, sam_file);
+            // Print length of final_seqs for verification
+            // std::cout << "[MAIN] Total final sequences: " << final_seqs.size() << std::endl;
+            // std::cout << "[MAIN] Total query sequences: " << query_sequences.size() << std::endl;
+            // std::cout << "[MAIN] Total query IDs: " << query_ids.size() << std::endl;
+            // std::cout << "[MAIN] Total candidate IDs: " << final_ids.size() << std::endl;
 
-        end_time = std::chrono::high_resolution_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            // write_sam(final_seqs, final_dists, query_sequences, query_ids, final_ids, "ref", ref_len, k, sam_file);
 
-        main_pipeline_time += duration.count();
-        std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
+            end_time = std::chrono::high_resolution_clock::now();
+            duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
+            main_pipeline_time += duration.count();
+            std::cout << "[MAIN] Output saving time: " << duration.count() << " ms" << std::endl;
         }
         else
         {

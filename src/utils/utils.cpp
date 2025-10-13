@@ -414,7 +414,8 @@ void write_sam_streaming(
     size_t k,
     const std::string &sam_file,
     size_t query_offset,
-    bool write_header)
+    bool write_header,
+    size_t batch_query_count)
 {
     std::ofstream outfile;
     
@@ -444,9 +445,6 @@ void write_sam_streaming(
     // Calculate PREFIX/POSTFIX lengths for stripping - MATCHING ORIGINAL
     const size_t prefix_len = strlen(PREFIX);
     const size_t postfix_len = strlen(POSTFIX);
-    
-    // Number of queries in THIS BATCH
-    size_t batch_query_count = cand_seqs.size() / k;
     
     for (size_t i = 0; i < batch_query_count; ++i)
     {

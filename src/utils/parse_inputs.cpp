@@ -334,6 +334,119 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
     return {result, labels};
 }
 
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_batch(
+    const char *data,
+    size_t data_size,
+    const std::string &fasta_file,
+    size_t ref_len,
+    size_t stride,
+    bool lookup_mode,
+    size_t batch_size,         // New parameter: max sequences per batch
+    size_t &resume_pos,        // New parameter: position in data to resume from
+    size_t &position_counter,  // New parameter: global position counter
+    std::string &buffer_state, // New parameter: buffer state between batches
+    size_t &buf_start_state,   // New parameter: buffer start state
+    bool &is_complete)         // New parameter: whether file is complete
+{
+    std::cout << "[FASTA-BATCH] Processing batch starting at byte " << resume_pos << "..." << std::endl;
+
+    const char *seq_start;
+    if (resume_pos == 0)
+    {
+        // First batch: skip header
+        seq_start = data;
+        while (seq_start < data + data_size && *seq_start != '\n')
+        {
+            seq_start++;
+        }
+        if (seq_start < data + data_size)
+            seq_start++;
+        resume_pos = seq_start - data;
+    }
+    else
+    {
+        seq_start = data + resume_pos;
+    }
+
+    std::vector<std::string> result;
+    std::vector<size_t> labels;
+    result.reserve(batch_size);
+    labels.reserve(batch_size);
+
+    std::string &buffer = buffer_state;
+    if (buffer.capacity() == 0)
+    {
+        buffer.reserve(ref_len + std::max<int>(1024, stride));
+    }
+    size_t &buf_start = buf_start_state;
+    size_t &position = position_counter;
+
+    size_t bytes_processed = 0;
+
+    // Process data until batch is full or data exhausted
+    for (const char *ptr = seq_start; ptr < data + data_size && result.size() < batch_size; ++ptr)
+    {
+        char c = *ptr;
+        bytes_processed++;
+
+        if (std::isspace(c))
+            continue;
+
+        c = std::toupper(static_cast<unsigned char>(c));
+        if (c != 'A' && c != 'T' && c != 'C' && c != 'G' && c != 'N')
+            continue;
+
+        buffer.push_back(c);
+
+        // Process as many windows as we can
+        while (buffer.size() - buf_start >= ref_len && result.size() < batch_size)
+        {
+            std::string window = buffer.substr(buf_start, ref_len);
+            std::string rev = reverse_complement(window);
+            std::string forward;
+            std::string reverse;
+
+            if (!lookup_mode)
+            {
+                forward.reserve(2 + ref_len);
+                forward.append(PREFIX).append(window).append(POSTFIX);
+                reverse.reserve(2 + ref_len);
+                reverse.append(PREFIX).append(rev).append(POSTFIX);
+            }
+            else
+            {
+                forward = window;
+                reverse = rev;
+            }
+
+            result.push_back(reverse);
+            result.push_back(forward);
+            labels.push_back((position << 1) | 0);
+            labels.push_back((position << 1) | 1);
+
+            buf_start += stride;
+            position += stride;
+        }
+
+        // Compact buffer
+        size_t min_compact = std::max<size_t>(ref_len, 4096);
+        if (buf_start >= min_compact || buf_start >= buffer.size() / 2)
+        {
+            buffer.erase(0, buf_start);
+            buf_start = 0;
+        }
+
+        // Update resume position
+        resume_pos = ptr - data + 1;
+    }
+
+    // Check if we've processed all data
+    is_complete = (resume_pos >= data_size);
+
+    std::cout << "[FASTA-BATCH] Batch complete: " << result.size() << " sequences" << std::endl;
+    return {result, labels};
+}
+
 // SIMD-accelerated reverse complement for chunks of 32 bytes
 void reverse_complement_simd(const char *src, char *dst, size_t len)
 {
