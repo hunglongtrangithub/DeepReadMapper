@@ -1,4 +1,6 @@
 #include "hnswpq/search.hpp"
+#include "cnpy.h"
+#include <filesystem>
 
 int main(int argc, char *argv[])
 {
@@ -13,15 +15,53 @@ int main(int argc, char *argv[])
     int ef = std::stoi(argv[3]);
     int k = std::stoi(argv[4]);
 
-    std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
-    auto [sequences, _] = read_file(query_file);
+    std::vector<std::vector<float>> embeddings;
 
-    // Embed input queries
-    std::cout << "[MAIN] Start inference" << std::endl;
-    Vectorizer vectorizer; // Use default params
+    // Check if query file is .npy
+    std::string file_ext = std::filesystem::path(query_file).extension().string();
+    
+    if (file_ext == ".npy")
+    {
+        std::cout << "[MAIN] Loading embeddings directly from .npy file: " << query_file << std::endl;
+        
+        // Load .npy file
+        cnpy::NpyArray arr = cnpy::npy_load(query_file);
+        
+        if (arr.shape.size() != 2)
+        {
+            std::cerr << "Error: Expected 2D array in .npy file" << std::endl;
+            return 1;
+        }
+        
+        size_t num_queries = arr.shape[0];
+        size_t embedding_dim = arr.shape[1];
+        
+        std::cout << "[MAIN] Loaded " << num_queries << " embeddings of dimension " << embedding_dim << std::endl;
+        
+        // Convert to vector<vector<float>>
+        float* data = arr.data<float>();
+        embeddings.resize(num_queries);
+        for (size_t i = 0; i < num_queries; ++i)
+        {
+            embeddings[i].resize(embedding_dim);
+            for (size_t j = 0; j < embedding_dim; ++j)
+            {
+                embeddings[i][j] = data[i * embedding_dim + j];
+            }
+        }
+    }
+    else
+    {
+        std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
+        auto [sequences, _] = read_file(query_file);
 
-    std::vector<std::vector<float>> embeddings = vectorizer.vectorize(sequences);
-    std::cout << "[MAIN] Inference completed" << std::endl;
+        // Embed input queries
+        std::cout << "[MAIN] Start inference" << std::endl;
+        Vectorizer vectorizer; // Use default params
+
+        embeddings = vectorizer.vectorize(sequences);
+        std::cout << "[MAIN] Inference completed" << std::endl;
+    }
 
     // Load FAISS IndexHNSWPQ
     std::cout << "[MAIN] Loading FAISS IndexHNSWPQ from " << index_file << "..." << std::endl;

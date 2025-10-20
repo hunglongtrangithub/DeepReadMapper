@@ -1,4 +1,5 @@
 #include "hnswpq/index.hpp"
+#include "cnpy.h"
 
 /// @brief Calculate estimated memory usage for IndexHNSWPQ
 size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int M_hnsw, size_t n_train)
@@ -229,23 +230,61 @@ int main(int argc, char *argv[])
     const size_t max_len = Config::Inference::MAX_LEN;
     const size_t model_out_size = Config::Inference::MODEL_OUT_SIZE;
 
-    // Load input data
-    std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
-    auto [sequences, __] = read_file(ref_file, ref_len, stride);
+    std::vector<std::vector<float>> embeddings;
 
-    // Create empty labels as we dont need them
-    std::vector<size_t> labels(sequences.size());
-
-    if (sequences.empty())
+    // Check if ref file is .npy
+    std::string file_ext = std::filesystem::path(ref_file).extension().string();
+    
+    if (file_ext == ".npy")
     {
-        std::cerr << "No sequences found in file: " << ref_file << std::endl;
-        return 1;
+        std::cout << "[BUILD INDEX] Loading embeddings directly from .npy file: " << ref_file << std::endl;
+        
+        // Load .npy file
+        cnpy::NpyArray arr = cnpy::npy_load(ref_file);
+        
+        if (arr.shape.size() != 2)
+        {
+            std::cerr << "Error: Expected 2D array in .npy file" << std::endl;
+            return 1;
+        }
+        
+        size_t num_vectors = arr.shape[0];
+        size_t embedding_dim = arr.shape[1];
+        
+        std::cout << "[BUILD INDEX] Loaded " << num_vectors << " embeddings of dimension " << embedding_dim << std::endl;
+        
+        // Convert to vector<vector<float>>
+        float* data = arr.data<float>();
+        embeddings.resize(num_vectors);
+        for (size_t i = 0; i < num_vectors; ++i)
+        {
+            embeddings[i].resize(embedding_dim);
+            for (size_t j = 0; j < embedding_dim; ++j)
+            {
+                embeddings[i][j] = data[i * embedding_dim + j];
+            }
+        }
+    }
+    else
+    {
+        // Load input data
+        std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
+        auto [sequences, __] = read_file(ref_file, ref_len, stride);
+
+        if (sequences.empty())
+        {
+            std::cerr << "No sequences found in file: " << ref_file << std::endl;
+            return 1;
+        }
+
+        std::cout << "[BUILD INDEX] Starting vectorizing sequences..." << std::endl;
+        Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
+        embeddings = vectorizer.vectorize(sequences);
+        std::cout << "[BUILD INDEX] Vectorization completed. Number of embeddings: " << embeddings.size() << std::endl;
     }
 
-    std::cout << "[BUILD INDEX] Starting vectorizing sequences..." << std::endl;
-    Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
-    std::vector<std::vector<float>> embeddings = vectorizer.vectorize(sequences);
-    std::cout << "[BUILD INDEX] Vectorization completed. Number of embeddings: " << embeddings.size() << std::endl;
+    // Create empty labels as we dont need them
+    std::vector<size_t> labels(embeddings.size());
 
     // Create and save config map
     std::cout << "[BUILD INDEX] Saving index config to folder: " << index_prefix << std::endl;
