@@ -55,7 +55,10 @@ int main(int argc, char *argv[])
               << std::endl;
 
     // Initialize vectorizer
-    Vectorizer vectorizer;
+    
+    // Vectorizer vectorizer;
+    LongSeqVectorizer vectorizer;
+
     size_t embedding_dim = 0;
 
     // Check file extension
@@ -256,7 +259,7 @@ int main(int argc, char *argv[])
         auto [sequences, query_ids] = read_file(sequences_file);
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto all_embeddings = vectorizer.vectorize(sequences);
+        auto all_embeddings = vectorizer.vectorize(sequences, true);
         auto end = std::chrono::high_resolution_clock::now();
 
         if (!all_embeddings.empty())

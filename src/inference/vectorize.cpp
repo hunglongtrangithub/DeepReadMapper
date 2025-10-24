@@ -364,3 +364,434 @@ int Vectorizer::prepareBatch(const std::vector<std::vector<uint16_t>> &batch, st
 
     return 0;
 }
+
+
+// ============================================================================
+// LongSeqVectorizer Implementation
+// ============================================================================
+
+LongSeqVectorizer::LongSeqVectorizer(
+    const std::string &model_path,
+    size_t chunk_size,
+    size_t guard,
+    size_t right_ctx,
+    float lambda_gc,
+    float lambda_pal,
+    float lambda_3)
+    : chunk_size_(chunk_size),
+      guard_(guard),
+      right_ctx_(right_ctx),
+      lambda_gc_(lambda_gc),
+      lambda_pal_(lambda_pal),
+      lambda_3_(lambda_3),
+      preprocessor_(),
+      model_(model_path)
+{
+    // Prepare data buffers for concurrent inference (same as Vectorizer)
+    size_t max_concurrent = Config::Inference::NUM_INFER_REQUESTS;
+    size_t batch_size = Config::Inference::BATCH_SIZE;
+    data_buffers_.resize(max_concurrent);
+
+    for (auto &buffer : data_buffers_)
+    {
+        buffer.resize(batch_size * chunk_size_);
+    }
+}
+
+std::vector<std::vector<float>> LongSeqVectorizer::vectorize(const std::vector<std::string> &seqs, bool verbose)
+{
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Vectorizing " << seqs.size() << " long sequences..." << std::endl;
+    }
+
+    auto start_total = std::chrono::high_resolution_clock::now();
+
+    // [STEP 1] Chunk all sequences and flatten into chunk list
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Chunking sequences..." << std::endl;
+    }
+
+    struct ChunkInfo {
+        std::string chunk_text;
+        size_t seq_idx;
+        size_t chunk_idx;
+        size_t total_chunks_for_seq;
+    };
+
+    std::vector<ChunkInfo> all_chunks;
+    std::vector<size_t> seq_chunk_counts(seqs.size(), 0);
+
+    for (size_t seq_idx = 0; seq_idx < seqs.size(); ++seq_idx)
+    {
+        size_t phase_offset = 0;
+        auto chunks = chunkSeq(seqs[seq_idx], phase_offset);
+        seq_chunk_counts[seq_idx] = chunks.size();
+
+        for (size_t chunk_idx = 0; chunk_idx < chunks.size(); ++chunk_idx)
+        {
+            all_chunks.push_back({chunks[chunk_idx], seq_idx, chunk_idx, chunks.size()});
+        }
+    }
+
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Generated " << all_chunks.size() 
+                  << " chunks from " << seqs.size() << " sequences." << std::endl;
+    }
+
+    // [STEP 2] Preprocess all chunks
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Preprocessing chunks..." << std::endl;
+    }
+
+    std::vector<std::vector<uint16_t>> all_tokens;
+    all_tokens.reserve(all_chunks.size());
+
+    for (const auto &chunk_info : all_chunks)
+    {
+        auto tokens = preprocessor_.preprocess(chunk_info.chunk_text, chunk_size_);
+        all_tokens.push_back(tokens);
+    }
+
+    // [STEP 3] Concurrent batch inference (using same pattern as Vectorizer)
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Running concurrent inference..." << std::endl;
+    }
+
+    indicators::ProgressBar progressBar{
+        indicators::option::BarWidth{80},
+        indicators::option::PrefixText{"long vectorizing"},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}};
+
+    if (verbose) {
+        indicators::show_console_cursor(false);
+    }
+
+    const size_t batch_size = Config::Inference::BATCH_SIZE;
+    const size_t concurrent_batches = Config::Inference::NUM_INFER_REQUESTS;
+    size_t total_chunks = all_tokens.size();
+
+    std::vector<std::vector<float>> chunk_embeddings(total_chunks);
+
+    auto start_infer = std::chrono::high_resolution_clock::now();
+
+    for (size_t start_idx = 0; start_idx < total_chunks; start_idx += batch_size * concurrent_batches)
+    {
+        // Prepare multiple batches for concurrent processing
+        std::vector<std::vector<std::vector<uint16_t>>> batches;
+        std::vector<size_t> batch_start_indices;
+
+        for (size_t batch_idx = 0; batch_idx < concurrent_batches; ++batch_idx)
+        {
+            size_t chunk_idx = start_idx + batch_idx * batch_size;
+            if (chunk_idx >= total_chunks)
+                break;
+
+            size_t batch_end = std::min(chunk_idx + batch_size, total_chunks);
+            size_t current_batch_size = batch_end - chunk_idx;
+
+            std::vector<std::vector<uint16_t>> batch_input(current_batch_size);
+            for (size_t i = 0; i < current_batch_size; ++i)
+            {
+                batch_input[i] = all_tokens[chunk_idx + i];
+            }
+
+            batches.push_back(batch_input);
+            batch_start_indices.push_back(chunk_idx);
+        }
+
+        // Process all batches concurrently using inferBatchAsync
+        std::vector<const int64_t *> batch_ptrs;
+        std::vector<size_t> original_batch_sizes;
+        batch_ptrs.reserve(batches.size());
+        original_batch_sizes.reserve(batches.size());
+
+        // Prepare all batches using dedicated buffers
+        for (size_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx)
+        {
+            const auto &batch = batches[batch_idx];
+            auto &current_buffer = data_buffers_[batch_idx];
+
+            original_batch_sizes.push_back(batch.size());
+            prepareBatch(batch, current_buffer);
+            batch_ptrs.push_back(current_buffer.data());
+        }
+
+        // Async inference
+        auto futures = model_.inferBatchAsync(batch_ptrs, {chunk_size_, batch_size});
+
+        // Collect results
+        for (size_t batch_idx = 0; batch_idx < futures.size(); ++batch_idx)
+        {
+            std::vector<float> model_output = futures[batch_idx].get();
+            size_t original_size = original_batch_sizes[batch_idx];
+            size_t start_chunk_idx = batch_start_indices[batch_idx];
+
+            for (size_t i = 0; i < original_size; ++i)
+            {
+                chunk_embeddings[start_chunk_idx + i] = std::vector<float>(
+                    model_output.begin() + i * 128,
+                    model_output.begin() + (i + 1) * 128
+                );
+            }
+        }
+
+        // Update progress bar
+        if (verbose) {
+            size_t processed = std::min(start_idx + batch_size * concurrent_batches, total_chunks);
+            size_t current_progress_percent = (processed * 100) / total_chunks;
+            progressBar.set_progress(current_progress_percent);
+        }
+    }
+
+    auto end_infer = std::chrono::high_resolution_clock::now();
+    auto infer_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_infer - start_infer).count();
+
+    if (verbose) {
+        progressBar.set_progress(100);
+        indicators::show_console_cursor(true);
+        std::cout << "[LongSeq Vectorizer] Inference completed in " << infer_duration << " ms." << std::endl;
+    }
+
+    // [STEP 4] Aggregate chunks back to sequences
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Aggregating chunks..." << std::endl;
+    }
+
+    std::vector<std::vector<float>> results(seqs.size());
+
+    size_t chunk_offset = 0;
+    for (size_t seq_idx = 0; seq_idx < seqs.size(); ++seq_idx)
+    {
+        size_t num_chunks = seq_chunk_counts[seq_idx];
+
+        if (num_chunks == 0)
+        {
+            results[seq_idx] = std::vector<float>(128, 0.0f);
+        }
+        else if (num_chunks == 1)
+        {
+            results[seq_idx] = chunk_embeddings[chunk_offset];
+        }
+        else
+        {
+            // Extract chunk embeddings for this sequence
+            std::vector<std::vector<float>> seq_chunk_embs(
+                chunk_embeddings.begin() + chunk_offset,
+                chunk_embeddings.begin() + chunk_offset + num_chunks
+            );
+
+            // Get original chunks for weight computation
+            std::vector<std::string> seq_chunks;
+            seq_chunks.reserve(num_chunks);
+            for (size_t i = 0; i < num_chunks; ++i)
+            {
+                seq_chunks.push_back(all_chunks[chunk_offset + i].chunk_text);
+            }
+
+            // Compute weights and interpolate
+            auto weights = computeMotifWeights(seq_chunks);
+            results[seq_idx] = weightedInterpolate(seq_chunk_embs, weights);
+        }
+
+        chunk_offset += num_chunks;
+    }
+
+    auto end_total = std::chrono::high_resolution_clock::now();
+    auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_total - start_total).count();
+
+    if (verbose) {
+        std::cout << "[LongSeq Vectorizer] Total vectorization completed in " << total_duration << " ms." << std::endl;
+    }
+
+    return results;
+}
+
+int LongSeqVectorizer::prepareBatch(const std::vector<std::vector<uint16_t>> &batch, std::vector<int64_t> &buffer)
+{
+    size_t batch_size = Config::Inference::BATCH_SIZE;
+    size_t actual_batch_size = batch.size();
+
+    // Zero the buffer
+    size_t total_elements = batch_size * chunk_size_;
+    std::fill(buffer.begin(), buffer.begin() + total_elements, 0);
+
+    // Single pass: transpose, cast, and pad simultaneously
+    for (size_t seq_idx = 0; seq_idx < actual_batch_size; ++seq_idx)
+    {
+        const auto &sequence = batch[seq_idx];
+        size_t seq_len = std::min(sequence.size(), chunk_size_);
+
+        for (size_t pos = 0; pos < seq_len; ++pos)
+        {
+            buffer[pos * batch_size + seq_idx] = static_cast<int64_t>(sequence[pos]);
+        }
+    }
+
+    return 0;
+}
+
+// ...existing code for chunkSeq, computeMotifWeights, weightedInterpolate, etc...
+
+std::vector<std::string> LongSeqVectorizer::chunkSeq(const std::string &seq, size_t &phase_offset)
+{
+    phase_offset = 0;
+    size_t delta = phase_offset % 3;
+    
+    size_t L = seq.length();
+    
+    if (L < chunk_size_)
+    {
+        return {seq};
+    }
+    
+    std::vector<std::string> chunks;
+    size_t i = delta;
+    
+    while (i + chunk_size_ <= L)
+    {
+        chunks.push_back(seq.substr(i, chunk_size_));
+        i += chunk_size_;
+    }
+    
+    return chunks;
+}
+
+std::vector<float> LongSeqVectorizer::computeMotifWeights(const std::vector<std::string> &chunks)
+{
+    std::vector<float> weights;
+    weights.reserve(chunks.size());
+    
+    for (const auto &chunk : chunks)
+    {
+        float gc = computeGC(chunk);
+        float pal = computePalindrome(chunk);
+        float spec = compute3merSpectrum(chunk);
+        
+        float w = std::exp(lambda_gc_ * gc + lambda_pal_ * pal + lambda_3_ * spec);
+        weights.push_back(w);
+    }
+    
+    return weights;
+}
+
+std::vector<float> LongSeqVectorizer::weightedInterpolate(const std::vector<std::vector<float>> &chunk_embs,
+                                                          const std::vector<float> &weights)
+{
+    size_t T = chunk_embs.size();
+    size_t d = 128;
+    
+    if (T == 1) return chunk_embs[0];
+    
+    std::vector<float> Y(d, 0.0f);
+    
+    // Interpolate across chunks to get final 128-dim embedding
+    for (size_t dim = 0; dim < d; ++dim)
+    {
+        float weighted_sum = 0.0f;
+        float weight_sum = 0.0f;
+        
+        for (size_t t = 0; t < T; ++t)
+        {
+            weighted_sum += weights[t] * chunk_embs[t][dim];
+            weight_sum += weights[t];
+        }
+        
+        Y[dim] = weighted_sum / weight_sum;
+    }
+    
+    return Y;
+}
+
+float LongSeqVectorizer::computeGC(const std::string &chunk)
+{
+    int gc_count = 0;
+    int total = 0;
+    
+    for (char c : chunk)
+    {
+        char upper = std::toupper(c);
+        if (upper == 'A' || upper == 'T' || upper == 'C' || upper == 'G')
+        {
+            total++;
+            if (upper == 'G' || upper == 'C')
+            {
+                gc_count++;
+            }
+        }
+    }
+    
+    return total > 0 ? static_cast<float>(gc_count) / total : 0.0f;
+}
+
+float LongSeqVectorizer::computePalindrome(const std::string &chunk)
+{
+    auto complement = [](char c) -> char {
+        switch (std::toupper(c))
+        {
+        case 'A': return 'T';
+        case 'T': return 'A';
+        case 'C': return 'G';
+        case 'G': return 'C';
+        default: return 'N';
+        }
+    };
+    
+    int matches = 0;
+    int total = 0;
+    size_t len = chunk.length();
+    
+    for (size_t i = 0; i < len / 2; ++i)
+    {
+        char left = std::toupper(chunk[i]);
+        char right = std::toupper(chunk[len - 1 - i]);
+        
+        if (left != 'N' && right != 'N')
+        {
+            total++;
+            if (left == complement(right))
+            {
+                matches++;
+            }
+        }
+    }
+    
+    return total > 0 ? static_cast<float>(matches) / total : 0.0f;
+}
+
+float LongSeqVectorizer::compute3merSpectrum(const std::string &chunk)
+{
+    std::unordered_map<std::string, int> kmer_counts;
+    
+    for (size_t i = 0; i + 3 <= chunk.length(); ++i)
+    {
+        std::string kmer = chunk.substr(i, 3);
+        for (char &c : kmer)
+        {
+            c = std::toupper(c);
+        }
+        
+        bool valid = true;
+        for (char c : kmer)
+        {
+            if (c != 'A' && c != 'T' && c != 'C' && c != 'G')
+            {
+                valid = false;
+                break;
+            }
+        }
+        
+        if (valid)
+        {
+            kmer_counts[kmer]++;
+        }
+    }
+    
+    float norm = 0.0f;
+    for (const auto &pair : kmer_counts)
+    {
+        norm += pair.second * pair.second;
+    }
+    
+    return std::sqrt(norm);
+}

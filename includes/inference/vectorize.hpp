@@ -54,3 +54,43 @@ private:
 
     std::vector<std::vector<int64_t>> data_buffers_; // Unified buffers handled concurrently
 };
+
+
+/// @brief A modern approach to consider all parts of long sequences.
+/// @details Splits long sequences into overlapping chunks, infers each chunk,
+///          pools codon phases, computes motif-based weights, and combines chunk embeddings.
+class LongSeqVectorizer {
+private:
+  // Members in LongSeqVectorizer
+  size_t chunk_size_;
+  size_t guard_;
+  size_t right_ctx_;
+  float lambda_gc_, lambda_pal_, lambda_3_;
+  Preprocessor preprocessor_;
+  FastModel model_;
+  std::vector<std::vector<int64_t>> data_buffers_;
+  
+  // Helper methods
+  std::vector<std::string> chunkSeq(const std::string& seq, size_t& phase_offset);
+  int prepareBatch(const std::vector<std::vector<uint16_t>> &batch, std::vector<int64_t> &buffer);
+  std::vector<float> computeMotifWeights(const std::vector<std::string>& chunks);
+  std::vector<float> weightedInterpolate(const std::vector<std::vector<float>>& chunk_embs, 
+                                         const std::vector<float>& weights);
+  
+  float computeGC(const std::string& chunk);
+  float computePalindrome(const std::string& chunk);
+  float compute3merSpectrum(const std::string& chunk);
+  
+public:
+  LongSeqVectorizer(
+    const std::string &model_path = Config::Inference::MODEL_PATH,
+    size_t chunk_size = Config::Inference::MAX_LEN,
+    size_t guard = 2,
+    size_t right_ctx = 30,
+    float lambda_gc = 0.0f,
+    float lambda_pal = 0.0f,
+    float lambda_3 = 0.0f
+  );
+  
+  std::vector<std::vector<float>> vectorize(const std::vector<std::string>& seqs, bool verbose = true);
+};
