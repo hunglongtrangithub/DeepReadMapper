@@ -187,8 +187,10 @@ int main(int argc, char *argv[])
             else
             {
                 std::cout << "[MAIN] Using STATIC fetching for reference sequences" << std::endl;
-                ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
-                std::cout << "[MAIN] Loaded " << ref_sequences.size() << " reference sequences from " << ref_seqs_file << std::endl;
+                // ref_sequences = read_file(ref_seqs_file, ref_len, 1, true).first;
+                // std::cout << "[MAIN] Loaded " << ref_sequences.size() << " reference sequences from " << ref_seqs_file << std::endl;
+
+                std::cout << "[MAIN] Temporary skip loading reference sequences." << std::endl;
             }
 
             auto ref_end_time = std::chrono::high_resolution_clock::now();
@@ -244,12 +246,14 @@ int main(int argc, char *argv[])
                   << std::endl;
 
         // Inference step - only if we have sequences to vectorize
-        Vectorizer *vectorizer = nullptr; // Declare here
+        // Vectorizer *vectorizer = nullptr;
+        LongSeqVectorizer *vectorizer = nullptr;
 
         if (!is_precomputed_embeddings)
         {
             std::cout << "[MAIN] INFERENCE STEP" << std::endl;
-            vectorizer = new Vectorizer(model_path, batch_size, max_len, model_out_size);
+            // vectorizer = new Vectorizer(model_path, batch_size, max_len, model_out_size);
+            vectorizer = new LongSeqVectorizer();
 
             // Run vectorization
             start_time = std::chrono::high_resolution_clock::now();
@@ -311,24 +315,24 @@ int main(int argc, char *argv[])
         //* L2 distance reranking
         if (!is_precomputed_embeddings)
         {
-            if (use_dynamic)
-            {
-                if (use_streaming)
-                {
-                    std::cout << "[MAIN] Using STREAMING output to SAM file: " << sam_file << std::endl;
-                    post_process_l2_dynamic_streaming(neighbors, distances, ref_genome, query_sequences, query_ids, ref_len, stride, k, embeddings, *vectorizer, k_clusters, sam_file, "ref");
-                    // Skip the rest of the post-processing and output saving
-                }
-                else
-                {
-                    std::cout << "[MAIN] Using NORMAL output to SAM file: " << sam_file << std::endl;
-                    std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, *vectorizer, k_clusters);
-                }
-            }
-            else
-            {
-                std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, *vectorizer, k_clusters);
-            }
+            // if (use_dynamic)
+            // {
+            //     if (use_streaming)
+            //     {
+            //         std::cout << "[MAIN] Using STREAMING output to SAM file: " << sam_file << std::endl;
+            //         post_process_l2_dynamic_streaming(neighbors, distances, ref_genome, query_sequences, query_ids, ref_len, stride, k, embeddings, *vectorizer, k_clusters, sam_file, "ref");
+            //         // Skip the rest of the post-processing and output saving
+            //     }
+            //     else
+            //     {
+            //         std::cout << "[MAIN] Using NORMAL output to SAM file: " << sam_file << std::endl;
+            //         std::tie(final_seqs, final_dists, final_ids) = post_process_l2_dynamic(neighbors, distances, ref_genome, query_sequences, ref_len, stride, k, embeddings, *vectorizer, k_clusters);
+            //     }
+            // }
+            // else
+            // {
+            //     std::tie(final_seqs, final_dists, final_ids) = post_process_l2_static(neighbors, distances, ref_sequences, query_sequences, ref_len, stride, k, embeddings, *vectorizer, k_clusters);
+            // }
 
             //* Smith-Waterman reranking
             // if (use_dynamic)

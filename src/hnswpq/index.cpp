@@ -278,7 +278,9 @@ int main(int argc, char *argv[])
         }
 
         std::cout << "[BUILD INDEX] Starting vectorizing sequences..." << std::endl;
-        Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
+
+        // Vectorizer vectorizer(model_path, batch_size, max_len, model_out_size);
+        LongSeqVectorizer vectorizer;
         embeddings = vectorizer.vectorize(sequences);
         std::cout << "[BUILD INDEX] Vectorization completed. Number of embeddings: " << embeddings.size() << std::endl;
     }

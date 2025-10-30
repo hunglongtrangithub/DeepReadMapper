@@ -631,7 +631,6 @@ int LongSeqVectorizer::prepareBatch(const std::vector<std::vector<uint16_t>> &ba
     return 0;
 }
 
-// ...existing code for chunkSeq, computeMotifWeights, weightedInterpolate, etc...
 
 std::vector<std::string> LongSeqVectorizer::chunkSeq(const std::string &seq, size_t &phase_offset)
 {
@@ -659,6 +658,12 @@ std::vector<std::string> LongSeqVectorizer::chunkSeq(const std::string &seq, siz
 
 std::vector<float> LongSeqVectorizer::computeMotifWeights(const std::vector<std::string> &chunks)
 {
+    // If all lambdas are zero, return uniform weights
+    if (lambda_gc_ == 0.0f && lambda_pal_ == 0.0f && lambda_3_ == 0.0f)
+    {
+        return std::vector<float>(chunks.size(), 1.0f);
+    }
+
     std::vector<float> weights;
     weights.reserve(chunks.size());
     
