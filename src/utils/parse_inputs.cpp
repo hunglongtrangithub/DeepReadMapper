@@ -224,73 +224,121 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
 {
     std::cout << "[FASTA] Processing FASTA data..." << std::endl;
 
-    // Find end of first line (header)
-    const char *seq_start = data;
-    while (seq_start < data + data_size && *seq_start != '\n')
+    // Step 1: Extract all sequences from the FASTA file
+    std::vector<std::string> sequences;
+    std::string current_seq;
+    current_seq.reserve(1024 * 1024); // Reserve 1MB initially
+
+    const char *ptr = data;
+    const char *end = data + data_size;
+    bool in_sequence = false;
+
+    while (ptr < end)
     {
-        seq_start++;
+        if (*ptr == '>')
+        {
+            // Save previous sequence if exists
+            if (!current_seq.empty())
+            {
+                sequences.push_back(std::move(current_seq));
+                current_seq.clear();
+                current_seq.reserve(1024 * 1024);
+            }
+            // Skip header line
+            while (ptr < end && *ptr != '\n')
+                ptr++;
+            if (ptr < end)
+                ptr++; // Skip newline
+            in_sequence = true;
+            continue;
+        }
+
+        if (in_sequence)
+        {
+            char c = *ptr;
+            if (!std::isspace(c))
+            {
+                c = std::toupper(static_cast<unsigned char>(c));
+                if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N')
+                {
+                    current_seq.push_back(c);
+                }
+            }
+        }
+        ptr++;
     }
-    if (seq_start < data + data_size)
-        seq_start++; // Skip newline
 
-    // Preallocate vector
-    size_t estimated_size = estimate_token_count(fasta_file, ref_len, stride);
-    double mem_usage = (static_cast<double>(estimated_size) * 176.0) / (1024.0 * 1024.0);
+    // Add last sequence
+    if (!current_seq.empty())
+    {
+        sequences.push_back(std::move(current_seq));
+    }
 
-    std::vector<std::string> result;
-    std::vector<size_t> labels;
+    std::cout << "[FASTA] Extracted " << sequences.size() << " sequences" << std::endl;
 
-    result.reserve(estimated_size);
-    labels.reserve(estimated_size);
+    // Step 2: Calculate total windows across all sequences
+    size_t raw_windows = 0;
+    for (const auto &seq : sequences)
+    {
+        if (seq.size() >= ref_len)
+        {
+            raw_windows += (seq.size() - ref_len) / stride + 1;
+        }
+    }
+    size_t total_window = raw_windows * 2; // Forward + Reverse complement
 
-    std::cout << "[FASTA] Estimated number of sequences: " << estimated_size << std::endl;
+    double mem_usage = (static_cast<double>(total_window) * (ref_len + (lookup_mode ? 0 : 2))) / (1024.0 * 1024.0);
+
+    std::cout << "[FASTA] Raw windows across all sequences: " << raw_windows << std::endl;
+    std::cout << "[FASTA] Total estimated sequences (forward + reverse complement): " << total_window << std::endl;
+    std::cout << "[FASTA] Estimated output sequences: " << total_window << std::endl;
     std::cout << "[FASTA] Estimated RAM usage: " << std::fixed << std::setprecision(2) << mem_usage << " MB" << std::endl;
 
-    std::string buffer;
-    buffer.reserve(ref_len + std::max<int>(1024, stride));
-    size_t buf_start = 0;
-    size_t position = 0;
+    // Step 3: Preallocate result vectors
+    std::vector<std::string> result;
+    std::vector<size_t> labels;
+    result.reserve(total_window);
+    labels.reserve(total_window);
 
     // Setup progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
         indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"processing FASTA sequences"},
+        indicators::option::PrefixText{"processing FASTA windows"},
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    size_t bytes_processed = 0;
-    size_t last_progress_update = 0;
+    size_t sequences_processed = 0;
+    size_t global_position = 0;
 
-    // Process the data
-    for (const char *ptr = seq_start; ptr < data + data_size; ++ptr)
+    // Step 4: Generate sliding windows for each sequence
+    for (const auto &seq : sequences)
     {
-        char c = *ptr;
-        bytes_processed++;
-
-        if (std::isspace(c))
-            continue;
-
-        c = std::toupper(static_cast<unsigned char>(c));
-        if (c != 'A' && c != 'T' && c != 'C' && c != 'G' && c != 'N')
-            continue;
-
-        buffer.push_back(c);
-
-        // Process as many windows as we can given current buffer contents
-        while (buffer.size() - buf_start >= ref_len)
+        if (seq.size() < ref_len)
         {
-            std::string window = buffer.substr(buf_start, ref_len);
-
+            sequences_processed++;
+            continue;
+        }
+    
+        // Calculate number of windows for this sequence
+        size_t num_windows = (seq.size() - ref_len) / stride + 1;
+        
+        // Direct sliding window on the sequence
+        for (size_t i = 0; i < num_windows; ++i)
+        {
+            size_t start_pos = i * stride;
+            
+            // Extract window directly using substr (or string_view in C++17)
+            std::string window = seq.substr(start_pos, ref_len);
             std::string rev = reverse_complement(window);
             std::string forward;
             std::string reverse;
-
+    
             if (!lookup_mode)
             {
                 forward.reserve(2 + ref_len);
                 forward.append(PREFIX).append(window).append(POSTFIX);
-
+    
                 reverse.reserve(2 + ref_len);
                 reverse.append(PREFIX).append(rev).append(POSTFIX);
             }
@@ -299,38 +347,24 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
                 forward = window;
                 reverse = rev;
             }
-
+    
             result.push_back(reverse);
             result.push_back(forward);
-
-            labels.push_back((position << 1) | 0); // Forward
-            labels.push_back((position << 1) | 1); // Reverse complement
-
-            buf_start += stride;
-            position += stride;
+    
+            labels.push_back((global_position << 1) | 0);
+            labels.push_back((global_position << 1) | 1);
+    
+            global_position += stride;
         }
-
-        // Periodically compact the buffer to avoid unbounded growth / big memory
-        // Update buffer with new content when ref_len is done, or when half buffered data is obsoleted
-        size_t min_compact = std::max<size_t>(ref_len, 4096);
-        if (buf_start >= min_compact || buf_start >= buffer.size() / 2)
-        {
-            buffer.erase(0, buf_start);
-            buf_start = 0;
-        }
-
-        // Update progress bar
-        if (bytes_processed - last_progress_update > 1024 * 1024)
-        {
-            progressBar.set_progress((bytes_processed * 100) / data_size);
-            last_progress_update = bytes_processed;
-        }
+    
+        sequences_processed++;
+        progressBar.set_progress((sequences_processed * 100) / sequences.size());
     }
 
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
 
-    std::cout << "[FASTA] Successfully processed " << result.size() << " sequences" << std::endl;
+    std::cout << "[FASTA] Successfully processed " << result.size() << " windows from " << sequences.size() << " sequences" << std::endl;
     return {result, labels};
 }
 
