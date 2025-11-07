@@ -348,8 +348,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta(const char
                 reverse = rev;
             }
     
-            result.push_back(reverse);
             result.push_back(forward);
+            result.push_back(reverse);
     
             labels.push_back((global_position << 1) | 0);
             labels.push_back((global_position << 1) | 1);
@@ -375,12 +375,12 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_batch(
     size_t ref_len,
     size_t stride,
     bool lookup_mode,
-    size_t batch_size,         // New parameter: max sequences per batch
-    size_t &resume_pos,        // New parameter: position in data to resume from
-    size_t &position_counter,  // New parameter: global position counter
-    std::string &buffer_state, // New parameter: buffer state between batches
-    size_t &buf_start_state,   // New parameter: buffer start state
-    bool &is_complete)         // New parameter: whether file is complete
+    size_t batch_size,
+    size_t &resume_pos,
+    size_t &position_counter,
+    std::string &buffer_state,
+    size_t &buf_start_state,
+    bool &is_complete)
 {
     std::cout << "[FASTA-BATCH] Processing batch starting at byte " << resume_pos << "..." << std::endl;
 
@@ -453,8 +453,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_batch(
                 reverse = rev;
             }
 
-            result.push_back(reverse);
             result.push_back(forward);
+            result.push_back(reverse);
             labels.push_back((position << 1) | 0);
             labels.push_back((position << 1) | 1);
 
@@ -490,115 +490,111 @@ void reverse_complement_simd(const char *src, char *dst, size_t len)
     }
 }
 
-// Thread-local window processor using descriptors
-void process_window_batch_simd(
-    const char *genome_data,
-    const WindowDescriptor *descriptors,
-    size_t batch_size,
-    size_t ref_len,
-    const char *prefix_ptr,
-    const char *postfix_ptr,
-    size_t prefix_len,
-    size_t postfix_len,
-    std::vector<std::string> &result,
-    std::vector<size_t> &labels)
+// Multi-threaded FASTA data processing with multi-sequence support
+std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride, bool lookup_mode)
 {
-    const size_t out_len = prefix_len + ref_len + postfix_len;
+    std::cout << "[FASTA] Processing FASTA data (parallel)..." << std::endl;
 
-    for (size_t i = 0; i < batch_size; ++i)
+    // Step 1: Extract all sequences from the FASTA file (single-threaded)
+    std::vector<std::string> sequences;
+    std::string current_seq;
+    current_seq.reserve(1024 * 1024);
+
+    const char *ptr = data;
+    const char *end = data + data_size;
+    bool in_sequence = false;
+
+    while (ptr < end)
     {
-        const WindowDescriptor &desc = descriptors[i];
-        const char *src = genome_data + desc.genome_pos;
-
-        // Pre-allocate result string
-        std::string window_str(out_len, '\0');
-        char *dst = window_str.data();
-
-        // Copy prefix
-        if (prefix_len)
-            std::memcpy(dst, prefix_ptr, prefix_len);
-
-        if (desc.is_reverse == 0)
+        if (*ptr == '>')
         {
-            // Forward
-            std::memcpy(dst + prefix_len, src, ref_len);
-        }
-        else
-        {
-            // Reverse complement
-            reverse_complement_simd(src, dst + prefix_len, ref_len);
-        }
-
-        // Copy postfix
-        if (postfix_len)
-            std::memcpy(dst + prefix_len + ref_len, postfix_ptr, postfix_len);
-
-        // Store results
-        result[desc.result_idx] = std::move(window_str);
-        labels[desc.result_idx] = (static_cast<size_t>(desc.genome_pos) << 1) | desc.is_reverse;
-    }
-}
-
-std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const char *data, size_t data_size, const std::string &fasta_file, size_t ref_len, size_t stride)
-{
-    //* Multi-threaded doesn't support lookup mode for now
-
-    std::cout << "[FASTA] Start formatting data..." << std::endl;
-
-    // Step 1: Extract genome sequence (single-threaded)
-    const char *seq_start = data;
-    while (seq_start < data + data_size && *seq_start != '\n')
-        seq_start++;
-    if (seq_start < data + data_size)
-        seq_start++;
-
-    std::string genome_sequence;
-    genome_sequence.reserve(data_size);
-    for (const char *ptr = seq_start; ptr < data + data_size; ++ptr)
-    {
-        char c = *ptr;
-        if (std::isspace(c))
+            if (!current_seq.empty())
+            {
+                sequences.push_back(std::move(current_seq));
+                current_seq.clear();
+                current_seq.reserve(1024 * 1024);
+            }
+            while (ptr < end && *ptr != '\n')
+                ptr++;
+            if (ptr < end)
+                ptr++;
+            in_sequence = true;
             continue;
-        c = std::toupper(static_cast<unsigned char>(c));
-        if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N')
-            genome_sequence.push_back(c);
+        }
+
+        if (in_sequence)
+        {
+            char c = *ptr;
+            if (!std::isspace(c))
+            {
+                c = std::toupper(static_cast<unsigned char>(c));
+                if (c == 'A' || c == 'T' || c == 'C' || c == 'G' || c == 'N')
+                {
+                    current_seq.push_back(c);
+                }
+            }
+        }
+        ptr++;
     }
 
-    const size_t L = genome_sequence.size();
-    std::cout << "[FASTA] Full sequence length: " << L << " bases" << std::endl;
-    if (L < ref_len)
-        return {{}, {}};
-
-    const size_t num_windows = (L - ref_len) / stride + 1;
-    const size_t total_sequences = num_windows * 2;
-
-    // Step 2: Create descriptor array
-    std::vector<WindowDescriptor> descriptors(total_sequences);
-
-    // Populate descriptors (lightweight, no string allocation)
-    for (size_t i = 0; i < num_windows; ++i)
+    if (!current_seq.empty())
     {
-        uint32_t pos = static_cast<uint32_t>(i * stride);
-        descriptors[i * 2] = {pos, 0, static_cast<uint32_t>(i * 2)};         // Forward
-        descriptors[i * 2 + 1] = {pos, 1, static_cast<uint32_t>(i * 2 + 1)}; // Reverse
+        sequences.push_back(std::move(current_seq));
     }
 
-    // Step 3: Pre-allocate result vectors
-    std::vector<std::string> result;
-    std::vector<size_t> labels;
+    std::cout << "[FASTA] Extracted " << sequences.size() << " sequences" << std::endl;
 
-    result.reserve(total_sequences);
-    labels.reserve(total_sequences);
+    // Step 2: Calculate total windows across all sequences
+    size_t raw_windows = 0;
+    for (const auto &seq : sequences)
+    {
+        if (seq.size() >= ref_len)
+        {
+            raw_windows += (seq.size() - ref_len) / stride + 1;
+        }
+    }
+    size_t total_windows = raw_windows * 2;
 
-    // Step 4: Calculate processing batches for threads
+    double mem_usage = (static_cast<double>(total_windows) * (ref_len + (lookup_mode ? 0 : 2))) / (1024.0 * 1024.0);
+
+    std::cout << "[FASTA] Raw windows across all sequences: " << raw_windows << std::endl;
+    std::cout << "[FASTA] Total estimated sequences (forward + reverse): " << total_windows << std::endl;
+    std::cout << "[FASTA] Estimated RAM usage: " << std::fixed << std::setprecision(2) << mem_usage << " MB" << std::endl;
+
+    // Step 3: Create window descriptors for all sequences
+    std::vector<WindowDescriptor> descriptors;
+    descriptors.reserve(total_windows);
+
+    size_t global_position = 0;
+    size_t descriptor_idx = 0;
+
+    for (const auto &seq : sequences)
+    {
+        if (seq.size() < ref_len)
+            continue;
+
+        size_t num_windows = (seq.size() - ref_len) / stride + 1;
+
+        for (size_t i = 0; i < num_windows; ++i)
+        {
+            uint32_t pos = static_cast<uint32_t>(i * stride);
+            descriptors.push_back({pos, 0, static_cast<uint32_t>(descriptor_idx++)}); // Forward
+            descriptors.push_back({pos, 1, static_cast<uint32_t>(descriptor_idx++)}); // Reverse
+            global_position += stride;
+        }
+    }
+
+    // Step 4: Pre-allocate result vectors
+    std::vector<std::string> result(total_windows);
+    std::vector<size_t> labels(total_windows);
+
+    // Step 5: Setup batching for parallel processing
     const size_t BATCH_SIZE = 1000;
-    const size_t num_batches = (total_sequences + BATCH_SIZE - 1) / BATCH_SIZE;
+    const size_t num_batches = (descriptors.size() + BATCH_SIZE - 1) / BATCH_SIZE;
 
-    std::cout << "[FASTA] Total sequences: " << total_sequences << std::endl;
-    std::cout << "[FASTA] Number of windows: " << num_windows << std::endl;
-    std::cout << "[FASTA] Batch size: " << BATCH_SIZE << std::endl;
+    std::cout << "[FASTA] Processing " << descriptors.size() << " windows in " << num_batches << " batches" << std::endl;
 
-    // Step 5: Setup progress tracking
+    // Step 6: Setup progress tracking
     std::atomic<size_t> completed_batches{0};
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
@@ -607,32 +603,77 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
         indicators::option::ShowElapsedTime{true},
         indicators::option::ShowRemainingTime{true}};
 
-    const char *g = genome_sequence.data();
-    const size_t prefix_len = strlen(PREFIX);
-    const size_t postfix_len = strlen(POSTFIX);
-    const char *prefix_ptr = PREFIX;
-    const char *postfix_ptr = POSTFIX;
+    const size_t prefix_len = lookup_mode ? 0 : strlen(PREFIX);
+    const size_t postfix_len = lookup_mode ? 0 : strlen(POSTFIX);
+    const char *prefix_ptr = lookup_mode ? nullptr : PREFIX;
+    const char *postfix_ptr = lookup_mode ? nullptr : POSTFIX;
 
-    // Step 6: Process batches in parallel using descriptor API + SIMD
+    // Step 7: Process batches in parallel
 #pragma omp parallel for num_threads(Config::Preprocess::NUM_THREADS) schedule(dynamic, 1)
     for (size_t batch_id = 0; batch_id < num_batches; ++batch_id)
     {
         const size_t start_desc = batch_id * BATCH_SIZE;
-        const size_t end_desc = std::min(start_desc + BATCH_SIZE, total_sequences);
+        const size_t end_desc = std::min(start_desc + BATCH_SIZE, descriptors.size());
         const size_t batch_size = end_desc - start_desc;
 
-        // Process this batch of descriptors with SIMD acceleration
-        process_window_batch_simd(
-            g,
-            descriptors.data() + start_desc,
-            batch_size,
-            ref_len,
-            prefix_ptr,
-            postfix_ptr,
-            prefix_len,
-            postfix_len,
-            result,
-            labels);
+        // Find which sequence each descriptor belongs to
+        size_t seq_idx = 0;
+        size_t cumulative_windows = 0;
+        
+        for (size_t i = start_desc; i < end_desc; ++i)
+        {
+            const WindowDescriptor &desc = descriptors[i];
+            
+            // Find the correct sequence for this descriptor
+            while (seq_idx < sequences.size())
+            {
+                if (sequences[seq_idx].size() < ref_len)
+                {
+                    seq_idx++;
+                    continue;
+                }
+                
+                size_t seq_num_windows = (sequences[seq_idx].size() - ref_len) / stride + 1;
+                size_t seq_total_windows = seq_num_windows * 2;
+                
+                if (i < cumulative_windows + seq_total_windows)
+                    break;
+                    
+                cumulative_windows += seq_total_windows;
+                seq_idx++;
+            }
+            
+            const char *genome_data = sequences[seq_idx].data();
+            const char *src = genome_data + desc.genome_pos;
+            
+            // Build window string
+            const size_t out_len = prefix_len + ref_len + postfix_len;
+            std::string window_str(out_len, '\0');
+            char *dst = window_str.data();
+            
+            // Copy prefix
+            if (prefix_len)
+                std::memcpy(dst, prefix_ptr, prefix_len);
+            
+            if (desc.is_reverse == 0)
+            {
+                // Forward
+                std::memcpy(dst + prefix_len, src, ref_len);
+            }
+            else
+            {
+                // Reverse complement
+                reverse_complement_simd(src, dst + prefix_len, ref_len);
+            }
+            
+            // Copy postfix
+            if (postfix_len)
+                std::memcpy(dst + prefix_len + ref_len, postfix_ptr, postfix_len);
+            
+            // Store results
+            result[desc.result_idx] = std::move(window_str);
+            labels[desc.result_idx] = (static_cast<size_t>(desc.genome_pos) << 1) | desc.is_reverse;
+        }
 
         // Update progress
         size_t done = completed_batches.fetch_add(1) + 1;
@@ -646,7 +687,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> format_fasta_mp(const c
 
     progressBar.set_progress(100);
     indicators::show_console_cursor(true);
-    std::cout << "[FASTA] Successfully processed " << result.size() << " sequences" << std::endl;
+    
+    std::cout << "[FASTA] Successfully processed " << result.size() << " windows from " << sequences.size() << " sequences" << std::endl;
     return {result, labels};
 }
 
@@ -663,8 +705,8 @@ std::pair<std::vector<std::string>, std::vector<size_t>> preprocess_fasta(const 
     auto [result, labels] = format_fasta(data, data_size, fasta_file, ref_len, stride, lookup_mode);
 
     //* Use multi-threaded version
-    // TODO: Fix bug in multi-threaded version
-    // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride);
+    // TODO: Implement new multi-threaded version
+    // auto [result, labels] = format_fasta_mp(data, data_size, fasta_file, ref_len, stride, lookup_mode);
 
     // Step 3: Cleanup
 #ifdef __linux__
