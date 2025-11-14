@@ -279,17 +279,17 @@ target_link_libraries(hnswpq_index
 # )
 
 # DEFINE executable for generating ref.txt
-# set(GENERATE_REF_SRCS
-#     src/gen_ref.cpp
-# )
+set(GENERATE_REF_SRCS
+    src/gen_ref.cpp
+)
 
-# add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
+add_executable(gen_ref ${GENERATE_REF_SRCS} ${UTILS_SRCS} ${INFERENCE_SRCS})
 
-# target_link_libraries(gen_ref
-#     openvino::runtime
-#     OpenMP::OpenMP_CXX
-#     cnpy
-# )
+target_link_libraries(gen_ref
+    openvino::runtime
+    OpenMP::OpenMP_CXX
+    cnpy
+)
 
 # DEFINE executable for SW calc
 # set(SW_SRCS
