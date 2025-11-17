@@ -1,6 +1,6 @@
-# Optimized DeepAligner CPU
+# DeepReadMapper (DRM)
 
-This repository is an opitmized version of DeepAligner CPU Pipeline to locate similar genes of a given input.
+This repository is an optimized version of DeepReadMapper CPU Pipeline to find similar genes of a given input.
 
 ## Optimization
 
