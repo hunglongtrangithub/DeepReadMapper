@@ -1,11 +1,6 @@
 # DeepReadMapper (DRM)
 
-This repository is an optimized version of DeepReadMapper CPU Pipeline to find similar genes of a given input.
-
-## Optimization
-
-- Migrate from Python Binding to native C++.
-- Implement several methods to improve multi-threading performance, including privatization, shared memory, better locks/semaphores, ...
+DeepReadMapper is a deep learning-based gene alignment tool that uses vector similarity search to efficiently locate similar DNA sequences. It employs a pre-trained BiLSTM model to convert sequences into 128-dimensional embeddings, then performs fast approximate nearest neighbor search using HNSW indexing.
 
 ## Installation
 
@@ -13,7 +8,7 @@ This repository is an optimized version of DeepReadMapper CPU Pipeline to find s
 
     ```bash
     conda create -f environment.yml
-    conda activate DeepAligner
+    conda activate DeepReadMapper
     ```
 
 2. Install external libraries
@@ -61,3 +56,21 @@ This repository is an optimized version of DeepReadMapper CPU Pipeline to find s
 - `output_dir`: (Optional) Folder to save output files. Default: current folder.
 - `use_dynamic`: (Optional) Whether to use dynamic sequence lookup in postprocessing step, which takes more time but saves memory. Postprocessing isn't applicable for dense index. Default: 0 (False)
 - `use_streaming`: (Optional) Write output directly to disk after processing each query. For now, it is disable as SAM output is not supported. Default: 0 (False)
+
+## Sample usage
+
+1. Create index on Ecoli 150 (`tests/ecoli_150.fna`):
+
+```bash
+./build/hnswpq_index tests/ecoli_150.fna ecoli_150_index 150
+```
+
+2. Perform search on Ecoli 150 queries (`tests/ecoli_150.fastq`):
+
+```bash
+./build/pipeline ecoli_150_index tests/ecoli_150.fastq tests/ecoli_150.fna
+```
+
+The results will be saved in the current directory by default. There will be 2 numpy files: `indices.npy` and `distances.npy`.
+
+*Note* You can also modify `includes/utils/config.hpp` to change default parameters such as number of threads, batch sizes, and other settings.

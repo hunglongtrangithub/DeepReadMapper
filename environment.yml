@@ -1,4 +1,4 @@
-name: DeepAligner
+name: DeepReadMapper
 channels:
   - pytorch
   - anaconda

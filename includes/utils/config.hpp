@@ -15,8 +15,8 @@ namespace Config
 
     namespace Inference
     {
-        // constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
-        constexpr const char MODEL_PATH[] = "/home/tam/tam-workspace/Research/Optimized-DeepAligner-CPU/models/finetuned_sgn33-new-a-Apr6.xml"; // Path to the model file
+        constexpr const char MODEL_PATH[] = "models/finetuned_sgn33-new-a-Apr6.xml";
+        // constexpr const char MODEL_PATH[] = "/home/tam/tam-workspace/Research/Optimized-DeepAligner-CPU/models/finetuned_sgn33-new-a-Apr6.xml"; // Path to the model file
         constexpr const size_t BATCH_SIZE = 100;                                                                                                // Max num of sequences/batch. Actual batch may be smaller.
         constexpr const size_t MAX_LEN = 123;                                                                                                   // Max sequence length handled by the model. If shorter or longer, will be padded/truncated.
         constexpr const size_t MODEL_OUT_SIZE = 128;                                                                                            // Output vector size from the model
@@ -32,7 +32,7 @@ namespace Config
 
         constexpr const int NUM_THREADS = 128; // Number of threads for parallel search
 
-        constexpr const double SAMPLE_RATE = 0.1; // Fraction of data to use for training PQ codebooks
+        constexpr const double SAMPLE_RATE = 0.5; // Fraction of data to use for training PQ codebooks
 
         //! Below are deprecated and only use for testing purpose
         constexpr const int DIM = 128;              // Vector dimension. Keep it const for testing.
