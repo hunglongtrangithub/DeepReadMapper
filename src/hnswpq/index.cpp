@@ -194,7 +194,7 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
 
 int main(int argc, char *argv[])
 {
-    if (argc < 5 || argc > 9)
+    if (argc < 4 || argc > 9)
     {
         std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <index_prefix> <ref_len> [stride] [M_pq] [nbits] [M_hnsw] [EFC]" << std::endl;
         std::cerr << "  stride: step size for sliding window (default: 1)" << std::endl;
@@ -209,9 +209,7 @@ int main(int argc, char *argv[])
     const std::string index_prefix = argv[2];
 
     // Craft index file name and folder structure
-    std::string basename = std::filesystem::path(index_prefix).filename().string();
-
-    const std::string index_file = index_prefix + "/" + basename + ".index";
+    const std::string index_file = index_prefix + "/" + index_prefix + ".index";
 
     const size_t ref_len = static_cast<size_t>(std::stoul(argv[3]));
     const size_t stride = (argc >= 5) ? static_cast<size_t>(std::stoul(argv[4])) : 1;
