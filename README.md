@@ -4,32 +4,35 @@ DeepReadMapper is a deep learning-based gene alignment tool that uses vector sim
 
 ## Installation
 
+Make sure [Zig](https://ziglang.org/download/) and [Conda](https://www.anaconda.com/docs/getting-started/miniconda/install) are available.
+
 1. Create conda environment
 
-    ```bash
-    conda create -f environment.yml
-    conda activate DeepReadMapper
-    ```
+   ```bash
+   conda env create -f environment.yml
+   conda activate DeepReadMapper
+   ```
 
 2. Install external libraries
 
-    ```bash
-    bash setup_submodule.sh
-    ```
+   ```bash
+   bash setup_submodule.sh
+   ```
 
 3. Build the project
 
-    ```bash
-    mkdir build && cd build
-    cmake ..
-    make -j32
-    ```
+   ```bash
+   zig build
+   ```
+
+All the binaries all in `zig-out/bin` directory.
 
 ## Usage
 
-1. Index 
+1. Index
+
 ```bash
-./hnswpq_index <ref_seq.txt> <index_prefix> <ref_len> [stride] [M_pq] [nbits] [M_hnsw] [EFC]
+hnswpq_index <ref_seq.txt> <index_prefix> <ref_len> [stride] [M_pq] [nbits] [M_hnsw] [EFC]
 ```
 
 - `ref_seq.txt`: Path to reference file. Can be FASTA/txt/npy format.
@@ -44,7 +47,7 @@ DeepReadMapper is a deep learning-based gene alignment tool that uses vector sim
 2. Search
 
 ```bash
-./pipeline <index_prefix> <query_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters] [output_dir] [use_dynamic] [use_streaming]
+pipeline <index_prefix> <query_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters] [output_dir] [use_dynamic] [use_streaming]
 ```
 
 - `index_prefix`: The prefix to the index folder. Contains the index file and config.txt
@@ -62,15 +65,15 @@ DeepReadMapper is a deep learning-based gene alignment tool that uses vector sim
 1. Create index on Ecoli 150 (`tests/ecoli_150.fna`):
 
 ```bash
-./build/hnswpq_index tests/ecoli_150.fna ecoli_150_index 150
+./zig-out/bin/hnswpq_index tests/ecoli_150.fna ecoli_150_index 150
 ```
 
 2. Perform search on Ecoli 150 queries (`tests/ecoli_150.fastq`):
 
 ```bash
-./build/pipeline ecoli_150_index tests/ecoli_150.fastq tests/ecoli_150.fna
+./zig-out/bin/pipeline ecoli_150_index tests/ecoli_150.fastq tests/ecoli_150.fna
 ```
 
 The results will be saved in the current directory by default. There will be 2 numpy files: `indices.npy` and `distances.npy`.
 
-*Note* You can also modify `includes/utils/config.hpp` to change default parameters such as number of threads, batch sizes, and other settings.
+**Note**: You can also modify `includes/utils/config.hpp` to change default parameters such as number of threads, batch sizes, and other settings.
