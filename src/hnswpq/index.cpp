@@ -58,7 +58,7 @@ size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int 
 /// @brief Create a representative training set by sampling evenly across the entire dataset. Takes n_train vectors,
 /// usually 10% of total for optimal PQ codebook quality.
 
-std::vector<float> create_training_set(const std::vector<std::vector<float>> &all_embeddings, size_t n_train) {
+std::vector<float> create_training_set(const std::vector<std::vector<float>>& all_embeddings, size_t n_train) {
     size_t total_vectors = all_embeddings.size();
     size_t d = all_embeddings[0].size();
 
@@ -74,15 +74,15 @@ std::vector<float> create_training_set(const std::vector<std::vector<float>> &al
         // Ensure we don't go out of bounds
         sample_idx = std::min(sample_idx, total_vectors - 1);
 
-        const auto &vec = all_embeddings[sample_idx];
+        const auto& vec = all_embeddings[sample_idx];
         std::copy(vec.begin(), vec.end(), train_data.begin() + i * d);
     }
 
     return train_data;
 }
 
-void build_faiss_index(const std::vector<std::vector<float>> &input_data, const std::vector<size_t> labels,
-                       const std::string &index_file, int M_pq, int nbits, int M_hnsw, int EFC) {
+void build_faiss_index(const std::vector<std::vector<float>>& input_data, const std::vector<size_t> labels,
+                       const std::string& index_file, int M_pq, int nbits, int M_hnsw, int EFC) {
     // Build parameters
     size_t dim = input_data[0].size();
     size_t num_elements = input_data.size();
@@ -185,7 +185,7 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
               << ", efConstruction=" << EFC << std::endl;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     // Setup CLI11 application
     CLI::App app{"Build FAISS IndexHNSWPQ for sequence similarity search"};
 
@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
         ->check(CLI::ExistingFile);
 
     std::string index_prefix;
-    app.add_option("index_prefix", index_prefix, "Output index prefix (creates folder structure)")->required();
+    app.add_option("index_prefix", index_prefix, "Output index prefix (a directory path name)")->required();
 
     size_t ref_len;
     app.add_option("ref_len", ref_len, "Reference sequence length")->required()->check(CLI::PositiveNumber);
@@ -225,7 +225,8 @@ int main(int argc, char *argv[]) {
     CLI11_PARSE(app, argc, argv);
 
     // Craft index file name and folder structure
-    const std::string index_file = index_prefix + "/" + index_prefix + ".index";
+    std::string basename = std::filesystem::path(index_prefix).filename().string();
+    const std::string index_file = index_prefix + "/" + basename + ".index";
 
     // Display configuration
     std::cout << "[BUILD INDEX] Configuration:" << std::endl;
@@ -268,7 +269,7 @@ int main(int argc, char *argv[]) {
                   << std::endl;
 
         // Convert to vector<vector<float>>
-        float *data = arr.data<float>();
+        float* data = arr.data<float>();
         embeddings.resize(num_vectors);
         for (size_t i = 0; i < num_vectors; ++i) {
             embeddings[i].resize(embedding_dim);
