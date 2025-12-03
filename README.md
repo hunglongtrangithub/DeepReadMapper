@@ -32,17 +32,23 @@ All the binaries all in `zig-out/bin` directory.
 1. Index
 
 ```bash
-hnswpq_index <ref_seq.txt> <index_prefix> <ref_len> [stride] [M_pq] [nbits] [M_hnsw] [EFC]
+hnswpq_index <ref_seq.txt> <index_prefix> <ref_len> [OPTIONS]
 ```
+
+**Required Arguments:**
 
 - `ref_seq.txt`: Path to reference file. Can be FASTA/txt/npy format.
 - `index_prefix`: The prefix to the index folder. The index file and config.txt will be saved here.
 - `ref_len`: Length of reference sequences.
-- `stride`: (Optional) Stride for product quantization. Default: 1 (dense index)
-- `M_pq`: (Optional) Number of sub-vectors for product quantization. Default: 8
-- `nbits`: (Optional) Number of bits for each sub-vector. Default: 8
-- `M_hnsw`: (Optional) Number of connections for each node in HNSW graph. Default: 16
-- `EFC`: (Optional) Size of dynamic list for HNSW graph construction. Default: 200
+
+**Optional Arguments:**
+
+- `-s, --stride`: Stride for product quantization. Default: 1 (dense index)
+- `-p, --M_pq`: Number of sub-vectors for product quantization. Default: 8
+- `-b, --nbits`: Number of bits for each sub-vector (8, 10, or 12). Default: 8
+- `-m, --M_hnsw`: Number of connections for each node in HNSW graph. Default: 16
+- `-e, --EFC`: Size of dynamic list for HNSW graph construction. Default: 200
+- `-h, --help`: Show help message
 
 2. Search
 
@@ -65,13 +71,19 @@ pipeline <index_prefix> <query_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters
 1. Create index on Ecoli 150 (`tests/ecoli_150.fna`):
 
 ```bash
-./zig-out/bin/hnswpq_index tests/ecoli_150.fna ecoli_150_index 150
+./zig-out/bin/hnswpq_index ./tests/ecoli.fna ecoli_150_index 150
+```
+
+With custom parameters:
+
+```bash
+./zig-out/bin/hnswpq_index ./tests/ecoli.fna ecoli_150_index 150 --stride 2 --M_pq 16 --nbits 10
 ```
 
 2. Perform search on Ecoli 150 queries (`tests/ecoli_150.fastq`):
 
 ```bash
-./zig-out/bin/pipeline ecoli_150_index tests/ecoli_150.fastq tests/ecoli_150.fna
+./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna
 ```
 
 The results will be saved in the current directory by default. There will be 2 numpy files: `indices.npy` and `distances.npy`.
