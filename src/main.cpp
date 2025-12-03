@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "post_processor.hpp"
 #include "utils.hpp"
+#include "utils/CLI11.hpp"
 #include "vectorize.hpp"
 // #include "hnswlib_dir/search.hpp"
 #include <filesystem>
@@ -9,32 +10,70 @@
 #include "hnswpq/search.hpp"
 
 int main(int argc, char *argv[]) {
-    if (argc < 4 || argc > 10) {
-        std::cerr << "Usage: " << argv[0]
-                  << " <index_prefix> <query_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters] [output_dir] "
-                     "[use_dynamic] [use_streaming]"
-                  << std::endl;
-        std::cerr << "  - query input: Can be FASTQ/FASTA/TXT file or pre-computed embeddings in .npy format"
-                  << std::endl;
-        std::cerr << "  - EF: Optional HNSW search parameter (default: " << Config::Search::EF << ")" << std::endl;
-        std::cerr << "  - K: Optional number of nearest neighbors to return (default: " << Config::Search::K << ")"
-                  << std::endl;
-        std::cerr << "  - output_dir: Optional output directory (default: current directory)" << std::endl;
-        std::cerr << "  - use_dynamic: Optional flag to load reference sequences dynamically (1) or statically (0). "
-                     "Default: 0"
-                  << std::endl;
-        std::cerr << "  - use_streaming: Optional flag to use streaming output to SAM file (1) or normal output (0). "
-                     "Default: 0"
-                  << std::endl;
-        return 1;
-    }
+    // Setup CLI11 application
+    CLI::App app{"DeepReadMapper: Deep learning-based gene alignment using vector similarity search"};
+
+    // Required arguments
+    std::string index_prefix;
+    app.add_option("index_prefix", index_prefix, "Path to index folder containing .index file and config.txt")
+        ->required();
+
+    std::string query_input_file;
+    app.add_option("query_file", query_input_file,
+                   "Query sequences file (FASTQ/FASTA/TXT) or pre-computed embeddings (.npy)")
+        ->required()
+        ->check(CLI::ExistingFile);
+
+    std::string ref_seqs_file;
+    app.add_option("ref_file", ref_seqs_file, "Reference sequences file (FASTA/TXT)")
+        ->required()
+        ->check(CLI::ExistingFile);
+
+    // Optional arguments with defaults
+    int ef = Config::Search::EF;
+    app.add_option("-e,--EF", ef, "HNSW search parameter (higher = better accuracy, slower speed)")
+        ->default_val(Config::Search::EF)
+        ->check(CLI::Range(1, 2000));
+
+    int k = Config::Search::K;
+    app.add_option("-k,--K", k, "Number of nearest neighbors to return")
+        ->default_val(Config::Search::K)
+        ->check(CLI::Range(1, 1000));
+
+    int k_clusters = Config::Search::K_CLUSTERS;
+    app.add_option("-c,--K_clusters", k_clusters, "Number of clusters (only for sparse index with stride > 1)")
+        ->default_val(Config::Search::K_CLUSTERS)
+        ->check(CLI::Range(1, 1000));
+
+    std::string output_dir = ".";
+    app.add_option("-o,--output_dir", output_dir, "Output directory for results")->default_val(".");
+
+    bool use_dynamic = false;
+    app.add_flag("-d,--dynamic", use_dynamic,
+                 "Load reference sequences dynamically (saves memory for large references)");
+
+    bool use_streaming = false;
+    app.add_flag("-s,--streaming", use_streaming, "Use streaming output to SAM file (currently disabled)");
+
+    // Parse command line
+    CLI11_PARSE(app, argc, argv);
 
     try {
         auto master_start = std::chrono::high_resolution_clock::now();
-        std::cout << "=== DeepAligner CPU Pipeline ===" << std::endl << std::endl;
+        std::cout << "=== DeepReadMapper CPU Pipeline ===" << std::endl << std::endl;
 
-        // Read from command line arguments
-        const std::string index_prefix = argv[1];
+        // Display configuration
+        std::cout << "[PIPELINE] Configuration:" << std::endl;
+        std::cout << "  Index prefix: " << index_prefix << std::endl;
+        std::cout << "  Query file: " << query_input_file << std::endl;
+        std::cout << "  Reference file: " << ref_seqs_file << std::endl;
+        std::cout << "  EF: " << ef << std::endl;
+        std::cout << "  K: " << k << std::endl;
+        std::cout << "  K_clusters: " << k_clusters << std::endl;
+        std::cout << "  Output directory: " << output_dir << std::endl;
+        std::cout << "  Use dynamic loading: " << (use_dynamic ? "Yes" : "No") << std::endl;
+        std::cout << "  Use streaming: " << (use_streaming ? "Yes" : "No") << std::endl;
+        std::cout << std::endl;
 
         // Craft index file name and folder structure
         std::string basename = std::filesystem::path(index_prefix).filename().string();
@@ -51,26 +90,12 @@ int main(int argc, char *argv[]) {
         size_t ref_len = std::get<size_t>(config["ref_len"]);
         size_t stride = std::get<size_t>(config["stride"]);
 
-        const std::string query_input_file = argv[2];
-        const std::string ref_seqs_file = argv[3];
-
-        // Optional HNSW search parameters
-        const int ef = (argc >= 5) ? std::stoi(argv[4]) : Config::Search::EF;
-        const int k = (argc >= 6) ? std::stoi(argv[5]) : Config::Search::K;
-        int k_clusters = Config::Search::K_CLUSTERS;
+        // Adjust k_clusters for dense index
         if (stride == 1) {
             k_clusters = k;
-        } else if (argc >= 7) {
-            k_clusters = std::stoi(argv[6]);
-        };
+        }
 
-        // Optional output file names with defaults
-        const std::string output_dir = (argc >= 8) ? argv[7] : ".";
         const std::string sam_file = output_dir + "/results.sam";
-
-        //* Suggest: Use dynamic when ref_len is large (e.g. 10,000) to save memory
-        const bool use_dynamic = (argc >= 9) ? (std::stoi(argv[8]) != 0) : false;
-        const bool use_streaming = (argc >= 10) ? (std::stoi(argv[9]) != 0) : false;
 
         // Config inference parameters
         const std::string model_path = Config::Inference::MODEL_PATH;

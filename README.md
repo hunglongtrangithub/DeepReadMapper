@@ -53,18 +53,22 @@ hnswpq_index <ref_seq.txt> <index_prefix> <ref_len> [OPTIONS]
 2. Search
 
 ```bash
-pipeline <index_prefix> <query_seqs.fastq> <ref_seqs.fasta> [EF] [K] [K_clusters] [output_dir] [use_dynamic] [use_streaming]
+pipeline <index_prefix> <query_file> <ref_file> [OPTIONS]
 ```
 
-- `index_prefix`: The prefix to the index folder. Contains the index file and config.txt
-- `query_seqs.fastq`: Path to query file. Can be FASTQ/txt/npy format.
-- `ref_seqs.fasta`: Path to reference file. Can be FASTA/txt format.
-- `EF`: (Optional) HNSW exploration index. Higher means better accuracy but slower speed. Default: 128
-- `K`: (Optional) Number of returned similar sequences. K <= EF. Default: 128
-- `K_clusters`: (Optional) Number of clusters to use, ONLY applicable in sparse index (stride > 1). For dense index, K_clusters = K.
-- `output_dir`: (Optional) Folder to save output files. Default: current folder.
-- `use_dynamic`: (Optional) Whether to use dynamic sequence lookup in postprocessing step, which takes more time but saves memory. Postprocessing isn't applicable for dense index. Default: 0 (False)
-- `use_streaming`: (Optional) Write output directly to disk after processing each query. For now, it is disable as SAM output is not supported. Default: 0 (False)
+**Required Arguments:**
+- `index_prefix`: Path to index folder containing .index file and config.txt
+- `query_file`: Query sequences file (FASTQ/FASTA/TXT) or pre-computed embeddings (.npy)
+- `ref_file`: Reference sequences file (FASTA/TXT)
+
+**Optional Arguments:**
+- `-e, --EF`: HNSW search parameter (higher = better accuracy, slower speed). Default: 128
+- `-k, --K`: Number of nearest neighbors to return. Default: 128
+- `-c, --K_clusters`: Number of clusters (only for sparse index with stride > 1). Default: varies
+- `-o, --output_dir`: Output directory for results. Default: current directory
+- `-d, --dynamic`: Load reference sequences dynamically (saves memory for large references)
+- `-s, --streaming`: Use streaming output to SAM file (currently disabled)
+- `-h, --help`: Show help message
 
 ## Sample usage
 
@@ -85,6 +89,11 @@ With custom parameters:
 ```bash
 ./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna
 ```
+
+   With custom parameters:
+   ```bash
+   ./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna --EF 256 --K 64 --dynamic
+   ```
 
 The results will be saved in the current directory by default. There will be 2 numpy files: `indices.npy` and `distances.npy`.
 
