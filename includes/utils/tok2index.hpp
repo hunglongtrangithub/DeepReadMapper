@@ -1,8 +1,9 @@
 #pragma once
 
-#include <tuple>
-#include <string>
 #include <stdint.h>
+
+#include <string>
+#include <tuple>
 
 constexpr size_t TOK2INDEX_SIZE = 96;
 

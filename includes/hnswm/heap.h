@@ -4,72 +4,58 @@
 
 #pragma once
 
-#include <utility>
 #include <cstdint>
 #include <functional>
+#include <utility>
 
-namespace dary_heap_helpers
-{
-    template <int D>
-    uint64_t first_child_index(uint64_t index)
-    {
-        return index * D + 1;
+namespace dary_heap_helpers {
+template <int D>
+uint64_t first_child_index(uint64_t index) {
+    return index * D + 1;
+}
+template <int D>
+uint64_t last_child_index(uint64_t index) {
+    return index * D + D;
+}
+template <int D>
+uint64_t last_grandchild_index(uint64_t index) {
+    return index * (D * D) + (D * D + D);
+}
+template <int D>
+uint64_t parent_index(uint64_t index) {
+    return (index - 1) / D;
+}
+template <int D>
+uint64_t grandparent_index(uint64_t index) {
+    return (index - (D + 1)) / (D * D);
+}
+template <int D>
+uint64_t index_with_no_grandchild(uint64_t length) {
+    return grandparent_index<D>(length - 1) + 1;
+}
+template <int D, typename It, typename Compare>
+inline It largest_child(It first_child_it, Compare &&compare) {
+    if constexpr (D == 1)
+        return first_child_it;
+    else if constexpr (D == 2)
+        return first_child_it + !!compare(first_child_it[0], first_child_it[1]);
+    else {
+        It first_half_largest = largest_child<D / 2>(first_child_it, compare);
+        It second_half_largest = largest_child<D - D / 2>(first_child_it + D / 2, compare);
+        return compare(*first_half_largest, *second_half_largest) ? second_half_largest : first_half_largest;
     }
-    template <int D>
-    uint64_t last_child_index(uint64_t index)
-    {
-        return index * D + D;
-    }
-    template <int D>
-    uint64_t last_grandchild_index(uint64_t index)
-    {
-        return index * (D * D) + (D * D + D);
-    }
-    template <int D>
-    uint64_t parent_index(uint64_t index)
-    {
-        return (index - 1) / D;
-    }
-    template <int D>
-    uint64_t grandparent_index(uint64_t index)
-    {
-        return (index - (D + 1)) / (D * D);
-    }
-    template <int D>
-    uint64_t index_with_no_grandchild(uint64_t length)
-    {
-        return grandparent_index<D>(length - 1) + 1;
-    }
-    template <int D, typename It, typename Compare>
-    inline It largest_child(It first_child_it, Compare &&compare)
-    {
-        if constexpr (D == 1)
+}
+template <int D, typename It, typename Compare>
+It largest_child(It first_child_it, int num_children, Compare &&compare) {
+    if constexpr (D == 2)
+        return first_child_it;
+    else if constexpr (D == 3) {
+        if (num_children == 1)
             return first_child_it;
-        else if constexpr (D == 2)
-            return first_child_it + !!compare(first_child_it[0], first_child_it[1]);
         else
-        {
-            It first_half_largest = largest_child<D / 2>(first_child_it, compare);
-            It second_half_largest = largest_child<D - D / 2>(first_child_it + D / 2, compare);
-            return compare(*first_half_largest, *second_half_largest) ? second_half_largest : first_half_largest;
-        }
-    }
-    template <int D, typename It, typename Compare>
-    It largest_child(It first_child_it, int num_children, Compare &&compare)
-    {
-        if constexpr (D == 2)
-            return first_child_it;
-        else if constexpr (D == 3)
-        {
-            if (num_children == 1)
-                return first_child_it;
-            else
-                return first_child_it + !!compare(first_child_it[0], first_child_it[1]);
-        }
-        else if constexpr (D == 4)
-        {
-            switch (num_children)
-            {
+            return first_child_it + !!compare(first_child_it[0], first_child_it[1]);
+    } else if constexpr (D == 4) {
+        switch (num_children) {
             case 1:
                 return first_child_it;
             case 2:
@@ -77,23 +63,18 @@ namespace dary_heap_helpers
             default:
                 It largest = first_child_it + !!compare(first_child_it[0], first_child_it[1]);
                 return compare(*largest, first_child_it[2]) ? first_child_it + 2 : largest;
-            }
         }
-        else
-        {
-            switch (num_children)
-            {
+    } else {
+        switch (num_children) {
             case 1:
                 return first_child_it;
             case 2:
                 return first_child_it + !!compare(first_child_it[0], first_child_it[1]);
-            case 3:
-            {
+            case 3: {
                 It largest = first_child_it + !!compare(first_child_it[0], first_child_it[1]);
                 return compare(*largest, first_child_it[2]) ? first_child_it + 2 : largest;
             }
-            case 4:
-            {
+            case 4: {
                 It largest_first_half = first_child_it + !!compare(first_child_it[0], first_child_it[1]);
                 It largest_second_half = first_child_it + 2 + !!compare(first_child_it[2], first_child_it[3]);
                 return compare(*largest_first_half, *largest_second_half) ? largest_second_half : largest_first_half;
@@ -103,102 +84,75 @@ namespace dary_heap_helpers
                 It first_half_largest = largest_child<D>(first_child_it, half, compare);
                 It second_half_largest = largest_child<D>(first_child_it + half, num_children - half, compare);
                 return compare(*first_half_largest, *second_half_largest) ? second_half_largest : first_half_largest;
-            }
         }
     }
 }
+}  // namespace dary_heap_helpers
 
 template <unsigned D, typename T, typename Compare = std::less<T>>
-class DaryHeap
-{
-private:
+class DaryHeap {
+   private:
     Compare compare_;
 
-public:
+   public:
     std::vector<T> data;
-    DaryHeap(unsigned numElements = 80000, const Compare &compare = Compare())
-    {
+    DaryHeap(unsigned numElements = 80000, const Compare &compare = Compare()) {
         this->data.reserve(numElements);
         this->compare_ = compare;
     }
 
-    void push(T newVal)
-    {
+    void push(T newVal) {
         this->data.push_back(newVal);
         auto begin = this->data.begin();
         auto end = this->data.end();
         auto value = std::move(end[-1]);
         uint64_t index = (end - begin) - 1;
-        while (index > 0)
-        {
+        while (index > 0) {
             uint64_t parent = dary_heap_helpers::parent_index<D>(index);
-            if (!this->compare_(begin[parent], value))
-                break;
+            if (!this->compare_(begin[parent], value)) break;
             begin[index] = std::move(begin[parent]);
             index = parent;
         }
         begin[index] = std::move(value);
     }
 
-    void pop()
-    {
+    void pop() {
         auto begin = this->data.begin();
         auto end = this->data.end();
         uint64_t length = (end - begin) - 1;
         auto value = std::move(end[-1]);
         end[-1] = std::move(begin[0]);
         uint64_t index = 0;
-        for (;;)
-        {
+        for (;;) {
             uint64_t last_child = dary_heap_helpers::last_child_index<D>(index);
             uint64_t first_child = last_child - (D - 1);
-            if (last_child < length)
-            {
+            if (last_child < length) {
                 auto largest_child = dary_heap_helpers::largest_child<D>(begin + first_child, this->compare_);
-                if (!this->compare_(value, *largest_child))
-                    break;
+                if (!this->compare_(value, *largest_child)) break;
                 begin[index] = std::move(*largest_child);
                 index = largest_child - begin;
-            }
-            else if (first_child < length)
-            {
-                auto largest_child = dary_heap_helpers::largest_child<D>(begin + first_child, length - first_child, this->compare_);
-                if (this->compare_(value, *largest_child))
-                {
+            } else if (first_child < length) {
+                auto largest_child =
+                    dary_heap_helpers::largest_child<D>(begin + first_child, length - first_child, this->compare_);
+                if (this->compare_(value, *largest_child)) {
                     begin[index] = std::move(*largest_child);
                     index = largest_child - begin;
                 }
                 break;
-            }
-            else
+            } else
                 break;
         }
         begin[index] = std::move(value);
         this->data.pop_back();
     }
 
-    const T &top() const
-    {
-        return this->data[0];
-    }
+    const T &top() const { return this->data[0]; }
 
-    void clear()
-    {
-        this->data.clear();
-    }
+    void clear() { this->data.clear(); }
 
-    bool empty()
-    {
-        return this->data.size() == 0;
-    }
+    bool empty() { return this->data.size() == 0; }
 
-    size_t size()
-    {
-        return this->data.size();
-    }
+    size_t size() { return this->data.size(); }
 
-    void reserve(unsigned size)
-    {
-        this->data.reserve(size);
-    }
+    void reserve(unsigned size) { this->data.reserve(size); }
 };

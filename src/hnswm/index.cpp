@@ -1,12 +1,11 @@
 #include "hnswm/index.hpp"
 
-void build(const std::vector<std::vector<float>> ref_vecs, std::string index_file)
-{
+void build(const std::vector<std::vector<float>> ref_vecs, std::string index_file) {
     // Parameters for HNSW
-    uint32_t DIM = 128;            // Vector dimension (matches VECTOR_DIM)
-    uint32_t EFC = 128;            // ef construction parameter
-    uint32_t M = 64;               // Number of connections per node
-    uint64_t maxNumNodes = 100000; // Maximum number of nodes
+    uint32_t DIM = 128;             // Vector dimension (matches VECTOR_DIM)
+    uint32_t EFC = 128;             // ef construction parameter
+    uint32_t M = 64;                // Number of connections per node
+    uint64_t maxNumNodes = 100000;  // Maximum number of nodes
 
     std::cout << "[INDEX BUILD] Building HNSW index with parameters:" << std::endl;
     std::cout << "  Dimension: " << DIM << std::endl;
@@ -30,11 +29,9 @@ void build(const std::vector<std::vector<float>> ref_vecs, std::string index_fil
     hnsw.save(index_file);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     // Load ref file & index file from command line arguments
-    if (argc != 3)
-    {
+    if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <ref_file.txt> <search.index>" << std::endl;
         return 1;
     }
@@ -49,7 +46,7 @@ int main(int argc, char *argv[])
     analyze_input(sequences);
 
     std::cout << "[MAIN] Start inference" << std::endl;
-    Vectorizer vectorizer; // Use default params
+    Vectorizer vectorizer;  // Use default params
 
     std::vector<std::vector<float>> ref_vecs = vectorizer.vectorize(sequences);
     std::cout << "[MAIN] Inference completed" << std::endl;

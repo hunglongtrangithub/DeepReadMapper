@@ -1,26 +1,26 @@
 #pragma once
 
-#include <vector>
-#include <stdexcept>
-#include <cctype>
 #include <immintrin.h>
-#include "tok2index.hpp"
-#include "progressbar.h"
 
-static inline uint8_t char2Val(const char c)
-{
-    switch (c)
-    {
-    case 'a':
-        return 0;
-    case 'c':
-        return 1;
-    case 'g':
-        return 2;
-    case 't':
-        return 3;
-    default:
-        return 7;
+#include <cctype>
+#include <stdexcept>
+#include <vector>
+
+#include "progressbar.h"
+#include "tok2index.hpp"
+
+static inline uint8_t char2Val(const char c) {
+    switch (c) {
+        case 'a':
+            return 0;
+        case 'c':
+            return 1;
+        case 'g':
+            return 2;
+        case 't':
+            return 3;
+        default:
+            return 7;
     }
 }
 
@@ -29,37 +29,31 @@ static inline uint8_t char2Val(const char c)
 // < and > are treated separately
 // strings start with < are the first 16 values
 // strings end with > are the second 16 values
-static inline uint8_t hashToken(const char token0, const char token1, const char token2)
-{
+static inline uint8_t hashToken(const char token0, const char token1, const char token2) {
     // Handle strings starting with '<'
-    if (token0 == '<')
-    {
+    if (token0 == '<') {
         return (char2Val(token1) << 2) + char2Val(token2);
     }
     // Handle strings ending with '>'
-    else if (token2 == '>')
-    {
+    else if (token2 == '>') {
         return 16 + (char2Val(token0) << 2) + char2Val(token1);
     }
     // Handle other strings containing 'a', 'c', 'g', 't'
-    else
-    {
+    else {
         return 32 + (char2Val(token0) << 4) + (char2Val(token1) << 2) + char2Val(token2);
     }
 }
 
-
-
-class Preprocessor
-{
-private:
+class Preprocessor {
+   private:
     std::vector<const char *> tokens_;
     std::vector<uint16_t> indices_;
 
-public:
+   public:
     Preprocessor();
-    
+
     std::vector<uint16_t> preprocess(const std::string &seq, unsigned maxLen);
-    
-    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen, bool verbose = true);
+
+    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen,
+                                                       bool verbose = true);
 };

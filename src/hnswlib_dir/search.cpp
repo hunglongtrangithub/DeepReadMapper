@@ -5,11 +5,7 @@ Multi-threaded HNSWLib search using OpenMP
 */
 
 std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(
-    hnswlib::HierarchicalNSW<float> *index,
-    const std::vector<std::vector<float>> &query_data,
-    int k,
-    int ef)
-{
+    hnswlib::HierarchicalNSW<float> *index, const std::vector<std::vector<float>> &query_data, int k, int ef) {
     // Config multi-threaded search parameters
     omp_set_num_threads(Config::Search::NUM_THREADS);
 
@@ -17,8 +13,7 @@ std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<
     index->setEf(ef);
 
     // Validate query data
-    if (query_data.empty())
-    {
+    if (query_data.empty()) {
         throw std::runtime_error("Query data is empty");
     }
 
@@ -28,8 +23,7 @@ std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<
 
 // Parallel search using OpenMP
 #pragma omp parallel for schedule(dynamic, 1)
-    for (size_t i = 0; i < query_data.size(); i++)
-    {
+    for (size_t i = 0; i < query_data.size(); i++) {
         auto result = index->searchKnnCloserFirst(query_data[i].data(), k);
 
         // Pre-allocate vectors for this query
@@ -39,10 +33,9 @@ std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<
         query_distances.reserve(result.size());
 
         // Extract results
-        for (const auto &neighbor : result)
-        {
-            query_distances.push_back(neighbor.first); // distance
-            query_results.push_back(neighbor.second);  // label/id
+        for (const auto &neighbor : result) {
+            query_distances.push_back(neighbor.first);  // distance
+            query_results.push_back(neighbor.second);   // label/id
         }
 
         // Store results
