@@ -4,8 +4,6 @@ channels:
   - defaults
 dependencies:
   # Build tools
-  - cmake
-  - make
   - cxx-compiler  # Provides g++/gcc
   - zig # Build
 
