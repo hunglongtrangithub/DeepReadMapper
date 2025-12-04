@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
 
     // Load query file
     std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    std::vector<std::string> sequences = read_file(query_file).first;
 
     // Embed input queries
     std::cout << "[MAIN] Start inference" << std::endl;

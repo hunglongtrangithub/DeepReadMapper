@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     int num_threads = std::stoi(argv[5]);
 
     std::cout << "[SEARCH] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    std::vector<std::string> sequences = read_file(query_file).first;
 
     // Embed input queries
     std::cout << "[SEARCH] Start inference for " << sequences.size() << " queries" << std::endl;

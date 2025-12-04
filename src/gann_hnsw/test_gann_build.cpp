@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
     std::cout << "[BUILD] Loading data file: " << ref_file << std::endl;
 
     // Load your data (adjust this based on your data format)
-    std::vector<std::string> sequences = read_file(ref_file);
+    std::vector<std::string> sequences = read_file(ref_file).first;
 
     // Embed input data
     std::cout << "[BUILD] Start inference for " << sequences.size() << " sequences" << std::endl;

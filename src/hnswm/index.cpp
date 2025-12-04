@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
 
     std::cout << "[MAIN] Read reference sequences from: " << ref_file << std::endl;
 
-    std::vector<std::string> sequences = read_file(ref_file);
+    std::vector<std::string> sequences = read_file(ref_file).first;
 
     analyze_input(sequences);
 
