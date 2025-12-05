@@ -9,6 +9,77 @@ const BIN_OUT = ZIG_OUT ++ "/bin";
 /// Output directory for object files and dependency files
 const OBJ_OUT = ZIG_OUT ++ "/obj";
 
+/// Logging levels for build output
+const LogLevel = enum(u8) {
+    silent = 0, // No output
+    err = 1, // Only errors
+    warn = 2, // Errors and warnings
+    info = 3, // Errors, warnings, and info
+    debug = 4, // All output including debug
+    trace = 5, // Most verbose output
+
+    pub fn fromString(s: []const u8) ?LogLevel {
+        if (std.mem.eql(u8, s, "silent")) return .silent;
+        if (std.mem.eql(u8, s, "error")) return .err;
+        if (std.mem.eql(u8, s, "warn")) return .warn;
+        if (std.mem.eql(u8, s, "info")) return .info;
+        if (std.mem.eql(u8, s, "debug")) return .debug;
+        if (std.mem.eql(u8, s, "trace")) return .trace;
+        return null;
+    }
+
+    pub fn toString(self: LogLevel) []const u8 {
+        return switch (self) {
+            .silent => "silent",
+            .err => "error",
+            .warn => "warn",
+            .info => "info",
+            .debug => "debug",
+            .trace => "trace",
+        };
+    }
+};
+
+/// Global logger instance
+var global_log_level: LogLevel = .info;
+
+/// Logger functions
+const Log = struct {
+    pub fn setLevel(level: LogLevel) void {
+        global_log_level = level;
+    }
+
+    pub fn err(comptime fmt: []const u8, args: anytype) void {
+        if (@intFromEnum(global_log_level) >= @intFromEnum(LogLevel.err)) {
+            std.debug.print("[ERROR] " ++ fmt ++ "\n", args);
+        }
+    }
+
+    pub fn warn(comptime fmt: []const u8, args: anytype) void {
+        if (@intFromEnum(global_log_level) >= @intFromEnum(LogLevel.warn)) {
+            std.debug.print("[WARN] " ++ fmt ++ "\n", args);
+        }
+    }
+
+    pub fn info(comptime fmt: []const u8, args: anytype) void {
+        if (@intFromEnum(global_log_level) >= @intFromEnum(LogLevel.info)) {
+            std.debug.print("[INFO] " ++ fmt ++ "\n", args);
+        }
+    }
+
+    pub fn debug(comptime fmt: []const u8, args: anytype) void {
+        if (@intFromEnum(global_log_level) >= @intFromEnum(LogLevel.debug)) {
+            std.debug.print("[DEBUG] " ++ fmt ++ "\n", args);
+        }
+    }
+
+    pub fn trace(comptime fmt: []const u8, args: anytype) void {
+        if (@intFromEnum(global_log_level) >= @intFromEnum(LogLevel.trace)) {
+            std.debug.print("[TRACE] " ++ fmt ++ "\n", args);
+        }
+    }
+};
+
 /// Builder struct that encapsulates all build functionality
 const Builder = struct {
     /// Zig build instance
@@ -93,38 +164,57 @@ const Builder = struct {
     /// 2. Object file or dependency file does not exist
     /// 3. Source file is newer than object file
     /// 4. Any header dependency is newer than object file
+    ///
+    /// Otherwise returns false
     fn needsRebuild(self: Self, source_path: []const u8) bool {
         // Get object file name based on source path
         const obj_name = self.sourceToObjectName(source_path);
 
         // Check if object file exists
         const obj_path = self.builder.fmt("{s}/{s}.o", .{ OBJ_OUT, obj_name });
-        const obj_stat = std.fs.cwd().statFile(obj_path) catch return true;
+        const obj_stat = std.fs.cwd().statFile(obj_path) catch {
+            Log.debug("Object file missing: {s}", .{obj_path});
+            return true;
+        };
 
         // Check source file timestamp against object file
-        const src_stat = std.fs.cwd().statFile(source_path) catch std.debug.panic("Source file not found: {s}", .{source_path});
+        const src_stat = std.fs.cwd().statFile(source_path) catch {
+            Log.err("Source file not found: {s}", .{source_path});
+            std.process.exit(1);
+        };
 
         // If source is newer, need to rebuild
         if (src_stat.mtime > obj_stat.mtime) {
+            Log.debug("Source {s} newer than object {s}", .{ source_path, obj_path });
             return true;
         }
 
         // Check dependency file for included headers
         const dep_path = self.builder.fmt("{s}/{s}.d", .{ OBJ_OUT, obj_name });
-        _ = std.fs.cwd().statFile(dep_path) catch return true;
+        _ = std.fs.cwd().statFile(dep_path) catch {
+            Log.debug("Dependency file missing: {s}", .{dep_path});
+            return true;
+        };
 
         // Parse dependency file if it exists
-        return self.checkDependencyTimestamps(dep_path, obj_stat.mtime);
+        const needs_rebuild = self.checkDependencyTimestamps(dep_path, obj_stat.mtime);
+        if (needs_rebuild) {
+            Log.debug("Dependencies changed for {s}", .{source_path});
+        }
+        return needs_rebuild;
     }
 
     /// Parse .d file and check if any dependency is newer than object file
     fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) bool {
-        const file = std.fs.cwd().openFile(dep_path, .{}) catch return true; // Force rebuild on open failure
+        Log.trace("Checking dependencies in {s}", .{dep_path});
+        const file = std.fs.cwd().openFile(dep_path, .{}) catch {
+            Log.debug("Could not open dependency file: {s}", .{dep_path});
+            return true; // Force rebuild on open failure
+        };
         defer file.close();
 
-        // Take a reader
+        // Buffer to read the dependency file
         var reader_buf: [1024]u8 = undefined;
-        var reader = file.reader(&reader_buf);
 
         // Buffer to hold logical line
         var logical_line_buf = std.array_list.Managed(u8).init(self.builder.allocator);
@@ -134,30 +224,40 @@ const Builder = struct {
         var last_was_backslash = false;
 
         while (true) {
-            const line_buf = reader.interface.take(1024) catch |err| switch (err) {
-                error.EndOfStream => break,
-                error.ReadFailed => return true, // Force rebuild on read failure
+            Log.trace("Reading chunk from dependency file", .{});
+            const bytes_read = file.readAll(&reader_buf) catch {
+                Log.debug("Failed to read dependency file: {s}", .{dep_path});
+                return true; // Force rebuild on read failure
             };
 
-            for (line_buf) |b| {
+            // Break at end of file
+            if (bytes_read == 0) break;
+
+            Log.trace("Read {d} bytes", .{bytes_read});
+
+            for (reader_buf[0..bytes_read]) |b| {
                 if (last_was_backslash) {
                     // Expect newline
                     if (b == '\n') {
                         // Skip both: do NOT append either char
+                        Log.trace("Skipping line continuation", .{});
                         last_was_backslash = false;
                         continue;
                     } else {
-                        std.debug.panic("Invalid .d file: '\\' not followed by newline", .{});
+                        Log.err("Invalid dependency file content: '\\' not followed by newline in {s}", .{dep_path});
+                        std.process.exit(1);
                     }
                 }
 
                 if (b == '\\') {
+                    Log.trace("Found line continuation", .{});
                     last_was_backslash = true;
                     continue;
                 }
 
                 if (b == '\n') {
                     // normal newline terminates the logical line
+                    Log.trace("End of logical line", .{});
                     break;
                 }
                 logical_line_buf.append(b) catch @panic("OOM");
@@ -166,24 +266,29 @@ const Builder = struct {
 
         // Get the logical line
         const line = logical_line_buf.items;
+        Log.trace("Dependency line: {s}", .{line});
 
         // Split by whitespace
-        var it = std.mem.tokenizeAny(u8, line, " \t\r\n");
+        var it = std.mem.tokenizeAny(u8, line, " \t\r\n ");
 
         while (it.next()) |tok| {
             // Check if token is at the end of the line
             if (std.mem.endsWith(u8, tok, ":")) {
+                Log.trace("Skipping target token: {s}", .{tok});
                 continue; // Skip target
             }
 
+            Log.trace("Checking dependency: {s}", .{tok});
             // This is a dependency file - check its timestamp
             const dep_stat = std.fs.cwd().statFile(tok) catch {
                 // If dependency file doesn't exist, force rebuild
+                Log.debug("Dependency file missing: {s}", .{tok});
                 return true;
             };
 
             if (dep_stat.mtime > obj_mtime) {
                 // Dependency is newer than object file, need to rebuild
+                Log.debug("Dependency {s} is newer than object", .{tok});
                 return true;
             }
         }
@@ -195,11 +300,11 @@ const Builder = struct {
     fn createConditionalObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) ?*std.Build.Step.Run {
         // Only create compilation step if rebuild is needed
         if (!self.needsRebuild(source)) {
-            std.debug.print("Skipping {s} (up to date)\n", .{source});
+            Log.info("SKIP (up to date): {s}", .{source});
             return null;
         }
 
-        std.debug.print("Compiling {s}\n", .{source});
+        Log.info("COMPILE: {s}", .{source});
         return self.createObjectCmd(source, flags, includes);
     }
 
@@ -293,25 +398,34 @@ const Builder = struct {
 };
 
 pub fn build(b: *std.Build) void {
+    // Configure logging level from command line
+    const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "info";
+    const log_level = LogLevel.fromString(log_level_str) orelse {
+        std.debug.print("Invalid log level: {s}. Valid levels: silent, error, warn, info, debug, trace\n", .{log_level_str});
+        std.process.exit(1);
+    };
+    Log.setLevel(log_level);
+
     const conda_prefix = std.posix.getenv("CONDA_PREFIX") orelse {
-        std.debug.print("Please activate conda environment: {s}\n", .{CONDA_ENV});
+        Log.err("CONDA_PREFIX not set", .{});
+        Log.info("Please activate conda environment: {s}", .{CONDA_ENV});
         std.process.exit(1);
     };
 
     if (std.mem.indexOf(u8, conda_prefix, CONDA_ENV) == null) {
-        std.debug.print("Incorrect conda environment: {s}\n", .{conda_prefix});
-        std.debug.print("Please activate conda environment: {s}\n", .{CONDA_ENV});
+        Log.err("Incorrect conda environment: {s}", .{conda_prefix});
+        Log.info("Please activate conda environment: {s}", .{CONDA_ENV});
         std.process.exit(1);
     }
 
-    std.debug.print("Using conda prefix: {s}\n", .{conda_prefix});
+    Log.info("Using conda prefix: {s}", .{conda_prefix});
 
     const gxx_path = b.findProgram(&[_][]const u8{"g++"}, &[_][]const u8{
         b.fmt("{s}/bin", .{conda_prefix}),
         "/usr/bin",
     }) catch "g++";
 
-    std.debug.print("Using g++ path: {s}\n", .{gxx_path});
+    Log.info("Using g++ path: {s}", .{gxx_path});
 
     // Initialize Builder
     const builder = Builder.init(b, gxx_path, conda_prefix);
