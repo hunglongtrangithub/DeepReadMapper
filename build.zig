@@ -407,7 +407,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     };
 
-    if (std.mem.indexOf(u8, conda_prefix, CONDA_ENV) == null) {
+    if (!std.mem.eql(u8, std.fs.path.basename(conda_prefix), CONDA_ENV)) {
         Log.err("Incorrect conda environment: {s}", .{conda_prefix});
         Log.info("Please activate conda environment: {s}", .{CONDA_ENV});
         std.process.exit(1);
