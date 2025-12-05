@@ -399,7 +399,7 @@ const Builder = struct {
 
 pub fn build(b: *std.Build) void {
     // Configure logging level from command line
-    const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "info";
+    const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "silent";
     const log_level = LogLevel.fromString(log_level_str) orelse {
         std.debug.print("Invalid log level: {s}. Valid levels: silent, error, warn, info, debug, trace\n", .{log_level_str});
         std.process.exit(1);
