@@ -127,7 +127,7 @@ const Builder = struct {
         return self.builder.fmt("{s}_{s}", .{ basename, hex_hash });
     }
 
-    /// Function to compile source to object file with dependency checking
+    /// Function to compile source to object file
     fn createObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) *std.Build.Step.Run {
         const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
 
@@ -216,7 +216,7 @@ const Builder = struct {
         // Buffer to read the dependency file
         var reader_buf: [1024]u8 = undefined;
 
-        // Buffer to hold logical line
+        // Buffer to hold logical line (handling line continuations with backslashes)
         var logical_line_buf = std.array_list.Managed(u8).init(self.builder.allocator);
         defer logical_line_buf.deinit();
 
@@ -309,22 +309,17 @@ const Builder = struct {
     }
 
     /// Create linking command
-    fn createLinkCmd(self: Self, all_object_files: []const []const u8, output_name: []const u8, extra_libs: []const []const u8) *std.Build.Step.Run {
+    fn createLinkCmd(self: Self, flags: []const []const u8, all_object_files: []const []const u8, output_name: []const u8, extra_libs: []const []const u8) *std.Build.Step.Run {
         const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
 
-        cmd.addArgs(&[_][]const u8{
-            "-fopenmp",
-        });
+        cmd.addArgs(flags);
 
         for (all_object_files) |obj| {
             cmd.addArg(obj);
         }
 
         cmd.addArg(self.builder.fmt("-L{s}/lib", .{self.conda_prefix}));
-        cmd.addArgs(&[_][]const u8{
-            "-lstdc++",
-            "-lz",
-        });
+        cmd.addArgs(&[_][]const u8{});
 
         for (extra_libs) |lib| {
             cmd.addArg(lib);
@@ -343,7 +338,7 @@ const Builder = struct {
     /// - `common_obj_steps`: optional list of build steps for common object files
     /// - `output`: name of the output executable
     /// - `libs`: list of libraries to link against
-    /// - `flags`: list of compilation flags
+    /// - `flags`: list of flags for both compilation and linking
     /// - `includes`: list of include directories
     ///
     /// Returns: build step for linking the executable
@@ -378,7 +373,7 @@ const Builder = struct {
             }
         }
 
-        const link_cmd = self.createLinkCmd(exe_objects.items, output, libs);
+        const link_cmd = self.createLinkCmd(flags, exe_objects.items, output, libs);
         link_cmd.step.dependOn(&self.mkdir_bin_cmd.step);
 
         // Depend on common object compilations if provided
@@ -449,6 +444,8 @@ pub fn build(b: *std.Build) void {
         "-fopenmp",
         "-march=native",
         "-Wall",
+        "-lstdc++", // for C++ standard library
+        "-lz", // zlib for cnpy
     };
 
     const common_includes = [_][]const u8{
