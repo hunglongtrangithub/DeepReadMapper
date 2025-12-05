@@ -29,6 +29,8 @@ All the binaries all in `zig-out/bin` directory.
 
 ## Usage
 
+**Note**: The code only works on Linux. You will get compile errors on Windows or MacOS.
+
 1. Index
 
 ```bash
@@ -57,11 +59,13 @@ pipeline <index_prefix> <query_file> <ref_file> [OPTIONS]
 ```
 
 **Required Arguments:**
+
 - `index_prefix`: Path to index folder containing .index file and config.txt
 - `query_file`: Query sequences file (FASTQ/FASTA/TXT) or pre-computed embeddings (.npy)
 - `ref_file`: Reference sequences file (FASTA/TXT)
 
 **Optional Arguments:**
+
 - `-e, --EF`: HNSW search parameter (higher = better accuracy, slower speed). Default: 128
 - `-k, --K`: Number of nearest neighbors to return. Default: 128
 - `-c, --K_clusters`: Number of clusters (only for sparse index with stride > 1). Default: varies
@@ -90,10 +94,11 @@ With custom parameters:
 ./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna
 ```
 
-   With custom parameters:
-   ```bash
-   ./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna --EF 256 --K 64 --dynamic
-   ```
+With custom parameters:
+
+```bash
+./zig-out/bin/pipeline ecoli_150_index ./tests/ecoli_150.fastq ./tests/ecoli.fna --EF 256 --K 64 --dynamic
+```
 
 The results will be saved in the current directory by default. There will be 2 numpy files: `indices.npy` and `distances.npy`.
 
