@@ -109,7 +109,7 @@ const Builder = struct {
         };
     }
 
-    /// Convert source path to guaranteed-unique object file name using hash (without extension)
+    /// Convert source path to guaranteed-unique object file name (without extension) using SHA256 hash
     ///
     /// Format: {basename}_{hash}
     fn sourceToObjectName(self: Self, source_path: []const u8) []const u8 {
@@ -125,36 +125,6 @@ const Builder = struct {
 
         // Combine: {basename}_{hash}
         return self.builder.fmt("{s}_{s}", .{ basename, hex_hash });
-    }
-
-    /// Function to compile source to object file
-    fn createObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) *std.Build.Step.Run {
-        const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
-
-        for (flags) |flag| {
-            cmd.addArg(flag);
-        }
-
-        // Compile only
-        cmd.addArg("-c");
-
-        for (includes) |inc| {
-            cmd.addArg(inc);
-        }
-
-        cmd.addArg(self.builder.fmt("-isystem{s}/include", .{self.conda_prefix}));
-        cmd.addArg(source);
-
-        // Get object file name based on source path
-        const obj_name = self.sourceToObjectName(source);
-        cmd.addArgs(&[_][]const u8{ "-o", self.builder.fmt("{s}/{s}.o", .{ OBJ_OUT, obj_name }) });
-
-        // Add dependency file generation for incremental builds
-        cmd.addArg("-MMD");
-        cmd.addArg("-MP");
-        cmd.addArg(self.builder.fmt("-MF{s}/{s}.d", .{ OBJ_OUT, obj_name }));
-
-        return cmd;
     }
 
     /// Check if object file needs rebuilding based on timestamps
@@ -204,7 +174,17 @@ const Builder = struct {
         return needs_rebuild;
     }
 
-    /// Parse .d file and check if any dependency is newer than object file
+    /// Parse a dependency (.d) file and check if any dependency is newer than the object file.
+    ///
+    /// Reads the dependency file, handles line continuations, and checks timestamps
+    /// of all listed dependencies. If any dependency is newer than the object file,
+    /// returns true to indicate a rebuild is needed.
+    ///
+    /// Parameters:
+    /// - `dep_path`: Path to the dependency file.
+    /// - `obj_mtime`: Modification time of the object file.
+    ///
+    /// Returns: true if any dependency is newer than the object file, false otherwise.
     fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) !bool {
         Log.trace("Checking dependencies in {s}", .{dep_path});
         const file = std.fs.cwd().openFile(dep_path, .{}) catch {
@@ -296,7 +276,17 @@ const Builder = struct {
         return false; // No dependencies are newer
     }
 
-    /// Create a conditional object compilation step
+    /// Create a conditional object compilation step.
+    ///
+    /// Checks if the source file or its dependencies require recompilation.
+    /// Returns null if no rebuild is needed, otherwise returns the build step for compilation.
+    ///
+    /// Parameters:
+    /// - `source`: Path to the source file to compile.
+    /// - `flags`: List of compiler flags to use.
+    /// - `includes`: List of include directory flags.
+    ///
+    /// Returns: Nullable pointer to the build step for compiling the object file.
     fn createConditionalObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) !?*std.Build.Step.Run {
         // Only create compilation step if rebuild is needed
         if (!(try self.needsRebuild(source))) {
@@ -308,7 +298,52 @@ const Builder = struct {
         return self.createObjectCmd(source, flags, includes);
     }
 
-    /// Create linking command
+    /// Create a system command to compile a source file into an object file.
+    ///
+    /// Parameters:
+    /// - `source`: Path to the source file to compile.
+    /// - `flags`: List of compiler flags to use.
+    /// - `includes`: List of include directory flags.
+    ///
+    /// Returns: A pointer to the build step for compiling the object file.
+    fn createObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) *std.Build.Step.Run {
+        const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
+
+        for (flags) |flag| {
+            cmd.addArg(flag);
+        }
+
+        // Compile only
+        cmd.addArg("-c");
+
+        for (includes) |inc| {
+            cmd.addArg(inc);
+        }
+
+        cmd.addArg(self.builder.fmt("-isystem{s}/include", .{self.conda_prefix}));
+        cmd.addArg(source);
+
+        // Get object file name based on source path
+        const obj_name = self.sourceToObjectName(source);
+        cmd.addArgs(&[_][]const u8{ "-o", self.builder.fmt("{s}/{s}.o", .{ OBJ_OUT, obj_name }) });
+
+        // Add dependency file generation for incremental builds
+        cmd.addArg("-MMD");
+        cmd.addArg("-MP");
+        cmd.addArg(self.builder.fmt("-MF{s}/{s}.d", .{ OBJ_OUT, obj_name }));
+
+        return cmd;
+    }
+
+    /// Create a system command to link object files into an executable.
+    ///
+    /// Parameters:
+    /// - `flags`: List of linker flags to use.
+    /// - `all_object_files`: List of object file paths to link.
+    /// - `output_name`: Name of the output executable.
+    /// - `extra_libs`: List of extra libraries to link against.
+    ///
+    /// Returns: A pointer to the build step for linking the executable.
     fn createLinkCmd(self: Self, flags: []const []const u8, all_object_files: []const []const u8, output_name: []const u8, extra_libs: []const []const u8) *std.Build.Step.Run {
         const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
 
