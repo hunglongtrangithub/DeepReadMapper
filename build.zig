@@ -166,7 +166,7 @@ const Builder = struct {
     /// 4. Any header dependency is newer than object file
     ///
     /// Otherwise returns false
-    fn needsRebuild(self: Self, source_path: []const u8) bool {
+    fn needsRebuild(self: Self, source_path: []const u8) !bool {
         // Get object file name based on source path
         const obj_name = self.sourceToObjectName(source_path);
 
@@ -197,7 +197,7 @@ const Builder = struct {
         };
 
         // Parse dependency file if it exists
-        const needs_rebuild = self.checkDependencyTimestamps(dep_path, obj_stat.mtime);
+        const needs_rebuild = try self.checkDependencyTimestamps(dep_path, obj_stat.mtime);
         if (needs_rebuild) {
             Log.debug("Dependencies changed for {s}", .{source_path});
         }
@@ -205,7 +205,7 @@ const Builder = struct {
     }
 
     /// Parse .d file and check if any dependency is newer than object file
-    fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) bool {
+    fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) !bool {
         Log.trace("Checking dependencies in {s}", .{dep_path});
         const file = std.fs.cwd().openFile(dep_path, .{}) catch {
             Log.debug("Could not open dependency file: {s}", .{dep_path});
@@ -260,7 +260,7 @@ const Builder = struct {
                     Log.trace("End of logical line", .{});
                     break;
                 }
-                logical_line_buf.append(b) catch @panic("OOM");
+                try logical_line_buf.append(b);
             }
         }
 
@@ -297,9 +297,9 @@ const Builder = struct {
     }
 
     /// Create a conditional object compilation step
-    fn createConditionalObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) ?*std.Build.Step.Run {
+    fn createConditionalObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) !?*std.Build.Step.Run {
         // Only create compilation step if rebuild is needed
-        if (!self.needsRebuild(source)) {
+        if (!(try self.needsRebuild(source))) {
             Log.info("SKIP (up to date): {s}", .{source});
             return null;
         }
@@ -351,25 +351,25 @@ const Builder = struct {
         libs: []const []const u8,
         flags: []const []const u8,
         includes: []const []const u8,
-    ) *std.Build.Step.Run {
+    ) !*std.Build.Step.Run {
         var exe_objects = std.array_list.Managed([]const u8).init(self.builder.allocator);
         var exe_obj_steps = std.array_list.Managed(*std.Build.Step.Run).init(self.builder.allocator);
 
         // Add common objects if provided
         if (common_objs) |objs| {
             for (objs) |obj| {
-                exe_objects.append(obj) catch @panic("OOM");
+                try exe_objects.append(obj);
             }
         }
 
         // Compile sources with incremental checking
         for (sources) |source| {
             const obj_path = self.builder.fmt("{s}/{s}.o", .{ OBJ_OUT, self.sourceToObjectName(source) });
-            exe_objects.append(obj_path) catch @panic("OOM");
+            try exe_objects.append(obj_path);
 
-            if (self.createConditionalObjectCmd(source, flags, includes)) |obj_cmd| {
+            if (try self.createConditionalObjectCmd(source, flags, includes)) |obj_cmd| {
                 obj_cmd.step.dependOn(&self.mkdir_obj_cmd.step);
-                exe_obj_steps.append(obj_cmd) catch @panic("OOM");
+                try exe_obj_steps.append(obj_cmd);
             }
         }
 
@@ -392,7 +392,7 @@ const Builder = struct {
     }
 };
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Configure logging level from command line
     const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "silent";
     const log_level = LogLevel.fromString(log_level_str) orelse {
@@ -465,16 +465,16 @@ pub fn build(b: *std.Build) void {
 
     for (common_sources) |source| {
         const obj_path = b.fmt("{s}/{s}.o", .{ OBJ_OUT, builder.sourceToObjectName(source) });
-        all_object_files.append(obj_path) catch @panic("OOM");
+        try all_object_files.append(obj_path);
 
-        if (builder.createConditionalObjectCmd(source, &common_flags, &common_includes)) |obj_cmd| {
+        if (try builder.createConditionalObjectCmd(source, &common_flags, &common_includes)) |obj_cmd| {
             obj_cmd.step.dependOn(&builder.mkdir_obj_cmd.step);
-            all_object_steps.append(obj_cmd) catch @panic("OOM");
+            try all_object_steps.append(obj_cmd);
         }
     }
 
     // Build executables using the Builder
-    const pipeline_cmd = builder.build(
+    const pipeline_cmd = try builder.build(
         &[_][]const u8{ "src/main.cpp", "src/hnswpq/search.cpp" },
         all_object_files.items,
         all_object_steps.items,
@@ -484,7 +484,7 @@ pub fn build(b: *std.Build) void {
         &common_includes,
     );
 
-    const inference_cmd = builder.build(
+    const inference_cmd = try builder.build(
         &[_][]const u8{"src/inference/test_inference.cpp"},
         all_object_files.items,
         all_object_steps.items,
@@ -494,7 +494,7 @@ pub fn build(b: *std.Build) void {
         &common_includes,
     );
 
-    const hnswpq_cmd = builder.build(
+    const hnswpq_cmd = try builder.build(
         &[_][]const u8{"src/hnswpq/index.cpp"},
         all_object_files.items,
         all_object_steps.items,
