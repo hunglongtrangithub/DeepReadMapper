@@ -186,7 +186,7 @@ const Builder = struct {
     ///
     /// Returns: true if any dependency is newer than the object file, false otherwise.
     fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) !bool {
-        Log.trace("Checking dependencies in {s}", .{dep_path});
+        Log.debug("Checking dependencies in {s}", .{dep_path});
         const file = std.fs.cwd().openFile(dep_path, .{}) catch {
             Log.debug("Could not open dependency file: {s}", .{dep_path});
             return true; // Force rebuild on open failure
@@ -254,11 +254,11 @@ const Builder = struct {
         while (it.next()) |tok| {
             // Check if token is at the end of the line
             if (std.mem.endsWith(u8, tok, ":")) {
-                Log.trace("Skipping target token: {s}", .{tok});
+                Log.debug("Skipping target token: {s}", .{tok});
                 continue; // Skip target
             }
 
-            Log.trace("Checking dependency: {s}", .{tok});
+            Log.debug("Checking dependency: {s}", .{tok});
             // This is a dependency file - check its timestamp
             const dep_stat = std.fs.cwd().statFile(tok) catch {
                 // If dependency file doesn't exist, force rebuild
