@@ -1,15 +1,16 @@
 #include "hnswpq/index.hpp"
+
+#include "CLI11.hpp"
 #include "cnpy.h"
 
 /// @brief Calculate estimated memory usage for IndexHNSWPQ
-size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int M_hnsw, size_t n_train)
-{
+size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int M_hnsw, size_t n_train) {
     size_t total_memory = 0;
     size_t training_memory = 0;
 
     // 1. PQ Codebooks memory
     // Each subquantizer has 2^nbits centroids, each centroid has (dim/M_pq) dimensions
-    size_t centroids_per_subquantizer = 1ULL << nbits; // 2^nbits
+    size_t centroids_per_subquantizer = 1ULL << nbits;  // 2^nbits
     size_t dim_per_subquantizer = dim / M_pq;
     size_t pq_codebooks = M_pq * centroids_per_subquantizer * dim_per_subquantizer * sizeof(float);
 
@@ -20,7 +21,7 @@ size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int 
     // 3. HNSW graph structure
     // Each vector has ~M_hnsw connections per layer, with multiple layers
     // Estimate average connections per vector (accounting for layers)
-    float avg_connections_per_vector = M_hnsw * 1.5f; // Approximation for multilayer
+    float avg_connections_per_vector = M_hnsw * 1.5f;  // Approximation for multilayer
     size_t hnsw_graph = num_vectors * avg_connections_per_vector * sizeof(uint32_t);
 
     // 4. Vector IDs and metadata
@@ -28,19 +29,21 @@ size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int 
     size_t training_peak = 0;
 
     // 5. Training memory (temporary during training phase)
-    if (n_train > 0)
-    {
-        training_memory = n_train * dim * sizeof(float);                                             // Training vectors
-        training_memory += M_pq * centroids_per_subquantizer * dim_per_subquantizer * sizeof(float); // Temp centroids during k-means
-        training_memory += n_train * M_pq * sizeof(uint32_t);                                        // Assignment arrays during k-means
+    if (n_train > 0) {
+        training_memory = n_train * dim * sizeof(float);  // Training vectors
+        training_memory +=
+            M_pq * centroids_per_subquantizer * dim_per_subquantizer * sizeof(float);  // Temp centroids during k-means
+        training_memory += n_train * M_pq * sizeof(uint32_t);  // Assignment arrays during k-means
 
         training_peak = pq_codebooks + training_memory;
 
-        std::cout << "[MEMORY ESTIMATE] Training (temporary): " << (training_memory / (1024 * 1024)) << " MB" << std::endl;
-        std::cout << "[MEMORY ESTIMATE] Peak Memory (during training): " << (training_peak / (1024 * 1024)) << " MB" << std::endl;
+        std::cout << "[MEMORY ESTIMATE] Training (temporary): " << (training_memory / (1024 * 1024)) << " MB"
+                  << std::endl;
+        std::cout << "[MEMORY ESTIMATE] Peak Memory (during training): " << (training_peak / (1024 * 1024)) << " MB"
+                  << std::endl;
     }
 
-    total_memory = pq_codebooks + pq_codes + hnsw_graph + metadata; // Final index size
+    total_memory = pq_codebooks + pq_codes + hnsw_graph + metadata;  // Final index size
 
     std::cout << "[MEMORY ESTIMATE] PQ Codebooks: " << (pq_codebooks / (1024 * 1024)) << " MB" << std::endl;
     std::cout << "[MEMORY ESTIMATE] PQ Codes: " << (pq_codes / (1024 * 1024)) << " MB" << std::endl;
@@ -52,13 +55,10 @@ size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int 
     return n_train > 0 ? std::max(training_peak, total_memory) : total_memory;
 }
 
-/// @brief Create a representative training set by sampling evenly across the entire dataset. Takes n_train vectors, usually 10% of total for optimal PQ codebook quality.
+/// @brief Create a representative training set by sampling evenly across the entire dataset. Takes n_train vectors,
+/// usually 10% of total for optimal PQ codebook quality.
 
-std::vector<float> create_training_set(
-    const std::vector<std::vector<float>> &all_embeddings,
-    size_t n_train)
-{
-
+std::vector<float> create_training_set(const std::vector<std::vector<float>>& all_embeddings, size_t n_train) {
     size_t total_vectors = all_embeddings.size();
     size_t d = all_embeddings[0].size();
 
@@ -67,31 +67,28 @@ std::vector<float> create_training_set(
 
     std::vector<float> train_data(n_train * d);
 
-    for (size_t i = 0; i < n_train; ++i)
-    {
+    for (size_t i = 0; i < n_train; ++i) {
         // Sample at evenly spaced intervals
         size_t sample_idx = i * step;
 
         // Ensure we don't go out of bounds
         sample_idx = std::min(sample_idx, total_vectors - 1);
 
-        const auto &vec = all_embeddings[sample_idx];
-        std::copy(vec.begin(), vec.end(),
-                  train_data.begin() + i * d);
+        const auto& vec = all_embeddings[sample_idx];
+        std::copy(vec.begin(), vec.end(), train_data.begin() + i * d);
     }
 
     return train_data;
 }
 
-void build_faiss_index(const std::vector<std::vector<float>> &input_data, const std::vector<size_t> labels, const std::string &index_file, int M_pq, int nbits, int M_hnsw, int EFC)
-{
+void build_faiss_index(const std::vector<std::vector<float>>& input_data, const std::vector<size_t> labels,
+                       const std::string& index_file, int M_pq, int nbits, int M_hnsw, int EFC) {
     // Build parameters
     size_t dim = input_data[0].size();
     size_t num_elements = input_data.size();
 
     // Validate input data
-    if (num_elements == 0)
-    {
+    if (num_elements == 0) {
         throw std::runtime_error("Input data is empty");
     }
 
@@ -102,7 +99,8 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
     estimate_memory(num_elements, dim, M_pq, nbits, M_hnsw, n_train);
     std::cout << std::endl;
 
-    std::cout << "[BUILD INDEX] Creating training set: " << n_train << " / " << num_elements << " vectors (" << (Config::Build::SAMPLE_RATE * 100) << "% dataset)" << std::endl;
+    std::cout << "[BUILD INDEX] Creating training set: " << n_train << " / " << num_elements << " vectors ("
+              << (Config::Build::SAMPLE_RATE * 100) << "% dataset)" << std::endl;
 
     // Create training set
     std::vector<float> train_data = create_training_set(input_data, n_train);
@@ -126,8 +124,7 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
 
     // Flatten input data for FAISS
     std::vector<float> vectors_flat(num_elements * dim);
-    for (size_t i = 0; i < num_elements; ++i)
-    {
+    for (size_t i = 0; i < num_elements; ++i) {
         std::copy(input_data[i].begin(), input_data[i].end(), vectors_flat.begin() + i * dim);
     }
 
@@ -136,17 +133,14 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
     // Hide cursor and create progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"building FAISS index"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
+        indicators::option::BarWidth{80}, indicators::option::PrefixText{"building FAISS index"},
+        indicators::option::ShowElapsedTime{true}, indicators::option::ShowRemainingTime{true}};
 
     // Add vectors with progress tracking
     auto build_start = std::chrono::high_resolution_clock::now();
 
     // Convert labels to faiss:idx_t if provided
-    if (labels.empty() || labels.size() != num_elements)
-    {
+    if (labels.empty() || labels.size() != num_elements) {
         throw std::runtime_error("Labels size does not match number of input vectors");
     }
 
@@ -158,8 +152,7 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
 
     // Add vector by batches
     const size_t batch_size = 10000;
-    for (size_t start = 0; start < num_elements; start += batch_size)
-    {
+    for (size_t start = 0; start < num_elements; start += batch_size) {
         size_t end = std::min(start + batch_size, num_elements);
         size_t batch_count = end - start;
 
@@ -188,41 +181,64 @@ void build_faiss_index(const std::vector<std::vector<float>> &input_data, const 
     faiss::write_index(&index, index_file.c_str());
 
     std::cout << "[BUILD INDEX] FAISS IndexHNSWPQ built and saved successfully!" << std::endl;
-    std::cout << "[BUILD INDEX] Index parameters: M_pq=" << M_pq << ", nbits=" << nbits
-              << ", M_hnsw=" << M_hnsw << ", efConstruction=" << EFC << std::endl;
+    std::cout << "[BUILD INDEX] Index parameters: M_pq=" << M_pq << ", nbits=" << nbits << ", M_hnsw=" << M_hnsw
+              << ", efConstruction=" << EFC << std::endl;
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc < 5 || argc > 9)
-    {
-        std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <index_prefix> <ref_len> [stride] [M_pq] [nbits] [M_hnsw] [EFC]" << std::endl;
-        std::cerr << "  stride: step size for sliding window (default: 1)" << std::endl;
-        std::cerr << "  M_pq: number of PQ subquantizers (default: 8)" << std::endl;
-        std::cerr << "  nbits: bits per subquantizer (default: 8)" << std::endl;
-        std::cerr << "  M_hnsw: HNSW connectivity (default: 16)" << std::endl;
-        std::cerr << "  EFC: efConstruction parameter (default: 200)" << std::endl;
-        return 1;
-    }
+int main(int argc, char* argv[]) {
+    // Setup CLI11 application
+    CLI::App app{"Build FAISS IndexHNSWPQ for sequence similarity search"};
 
-    const std::string ref_file = argv[1];
-    const std::string index_prefix = argv[2];
+    // Required arguments
+    std::string ref_file;
+    app.add_option("ref_file", ref_file, "Input reference sequences file (.txt or .npy)")
+        ->required()
+        ->check(CLI::ExistingFile);
+
+    std::string index_prefix;
+    app.add_option("index_prefix", index_prefix, "Output index prefix (a directory path name)")->required();
+
+    size_t ref_len;
+    app.add_option("ref_len", ref_len, "Reference sequence length")->required()->check(CLI::PositiveNumber);
+
+    // Optional arguments with defaults
+    size_t stride = 1;
+    app.add_option("-s,--stride", stride, "Step size for sliding window")->default_val(1)->check(CLI::PositiveNumber);
+
+    int M_pq = 8;
+    app.add_option("-p,--M_pq", M_pq, "Number of PQ subquantizers (must divide embedding dimension)")
+        ->default_val(8)
+        ->check(CLI::Range(1, 128));
+
+    int nbits = 8;
+    app.add_option("-b,--nbits", nbits, "Bits per subquantizer (8, 10, or 12)")
+        ->default_val(8)
+        ->check(CLI::IsMember({8, 10, 12}));
+
+    int M_hnsw = 16;
+    app.add_option("-m,--M_hnsw", M_hnsw, "HNSW connectivity parameter")->default_val(16)->check(CLI::Range(2, 128));
+
+    int EFC = 200;
+    app.add_option("-e,--EFC", EFC, "efConstruction parameter for HNSW")->default_val(200)->check(CLI::Range(1, 2000));
+
+    // Parse command line
+    CLI11_PARSE(app, argc, argv);
 
     // Craft index file name and folder structure
     std::string basename = std::filesystem::path(index_prefix).filename().string();
-
     const std::string index_file = index_prefix + "/" + basename + ".index";
 
-    const size_t ref_len = static_cast<size_t>(std::stoul(argv[3]));
-    const size_t stride = (argc >= 5) ? static_cast<size_t>(std::stoul(argv[4])) : 1;
-
-    // Parse optional parameters with defaults
-    // M_pq must be divisor of DIM, lower -> better accuracy
-    // nbits must be 8, 10, or 12. Higher -> better accuracy
-    int M_pq = (argc >= 6) ? std::stoi(argv[5]) : 8;
-    int nbits = (argc >= 7) ? std::stoi(argv[6]) : 8;
-    int M_hnsw = (argc >= 8) ? std::stoi(argv[7]) : 16;
-    int EFC = (argc >= 9) ? std::stoi(argv[8]) : 200;
+    // Display configuration
+    std::cout << "[BUILD INDEX] Configuration:" << std::endl;
+    std::cout << "  Input file: " << ref_file << std::endl;
+    std::cout << "  Index prefix: " << index_prefix << std::endl;
+    std::cout << "  Reference length: " << ref_len << std::endl;
+    std::cout << "  Stride: " << stride << std::endl;
+    std::cout << "  M_pq: " << M_pq << std::endl;
+    std::cout << "  nbits: " << nbits << std::endl;
+    std::cout << "  M_hnsw: " << M_hnsw << std::endl;
+    std::cout << "  EFC: " << EFC << std::endl;
+    std::cout << std::endl;
 
     // Config inference parameters
     const std::string model_path = Config::Inference::MODEL_PATH;
@@ -234,45 +250,39 @@ int main(int argc, char *argv[])
 
     // Check if ref file is .npy
     std::string file_ext = std::filesystem::path(ref_file).extension().string();
-    
-    if (file_ext == ".npy")
-    {
+
+    if (file_ext == ".npy") {
         std::cout << "[BUILD INDEX] Loading embeddings directly from .npy file: " << ref_file << std::endl;
-        
+
         // Load .npy file
         cnpy::NpyArray arr = cnpy::npy_load(ref_file);
-        
-        if (arr.shape.size() != 2)
-        {
+
+        if (arr.shape.size() != 2) {
             std::cerr << "Error: Expected 2D array in .npy file" << std::endl;
             return 1;
         }
-        
+
         size_t num_vectors = arr.shape[0];
         size_t embedding_dim = arr.shape[1];
-        
-        std::cout << "[BUILD INDEX] Loaded " << num_vectors << " embeddings of dimension " << embedding_dim << std::endl;
-        
+
+        std::cout << "[BUILD INDEX] Loaded " << num_vectors << " embeddings of dimension " << embedding_dim
+                  << std::endl;
+
         // Convert to vector<vector<float>>
         float* data = arr.data<float>();
         embeddings.resize(num_vectors);
-        for (size_t i = 0; i < num_vectors; ++i)
-        {
+        for (size_t i = 0; i < num_vectors; ++i) {
             embeddings[i].resize(embedding_dim);
-            for (size_t j = 0; j < embedding_dim; ++j)
-            {
+            for (size_t j = 0; j < embedding_dim; ++j) {
                 embeddings[i][j] = data[i * embedding_dim + j];
             }
         }
-    }
-    else
-    {
+    } else {
         // Load input data
         std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
         auto [sequences, __] = read_file(ref_file, ref_len, stride);
 
-        if (sequences.empty())
-        {
+        if (sequences.empty()) {
             std::cerr << "No sequences found in file: " << ref_file << std::endl;
             return 1;
         }

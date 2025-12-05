@@ -4,17 +4,12 @@
 Multi-threaded FAISS IndexHNSWPQ search using OpenMP
 */
 std::pair<std::vector<std::vector<faiss::idx_t>>, std::vector<std::vector<float>>> faiss_search(
-    faiss::IndexHNSWPQ *index,
-    const std::vector<std::vector<float>> &query_data,
-    int k,
-    int ef)
-{
+    faiss::IndexHNSWPQ *index, const std::vector<std::vector<float>> &query_data, int k, int ef) {
     // Set search parameters
     index->hnsw.efSearch = ef;
 
     // Validate query data
-    if (query_data.empty())
-    {
+    if (query_data.empty()) {
         throw std::runtime_error("Query data is empty");
     }
 
@@ -28,16 +23,14 @@ std::pair<std::vector<std::vector<faiss::idx_t>>, std::vector<std::vector<float>
     // Flatten query data for FAISS batch search
     std::vector<float> queries_flat(num_queries * dim);
     for (int i = 0; i < num_queries; ++i) {
-        std::copy(query_data[i].begin(), query_data[i].end(),
-                 queries_flat.begin() + i * dim);
+        std::copy(query_data[i].begin(), query_data[i].end(), queries_flat.begin() + i * dim);
     }
 
     // FAISS batch search (automatically parallelized)
     std::vector<float> batch_distances(num_queries * k);
     std::vector<faiss::idx_t> batch_labels(num_queries * k);
 
-    index->search(num_queries, queries_flat.data(), k,
-                 batch_distances.data(), batch_labels.data());
+    index->search(num_queries, queries_flat.data(), k, batch_distances.data(), batch_labels.data());
 
     // Convert batch results back to vector of vectors format
     for (int i = 0; i < num_queries; ++i) {
@@ -55,4 +48,3 @@ std::pair<std::vector<std::vector<faiss::idx_t>>, std::vector<std::vector<float>
 
     return std::make_pair(results, distances);
 }
-

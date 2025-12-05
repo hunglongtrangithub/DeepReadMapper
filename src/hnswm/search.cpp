@@ -1,7 +1,7 @@
 #include "hnswm/search.hpp"
 
-std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> search(const std::vector<std::vector<float>> &quer_vecs, HNSW &index)
-{
+std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> search(
+    const std::vector<std::vector<float>> &quer_vecs, HNSW &index) {
     std::vector<std::vector<uint32_t>> node_ids(quer_vecs.size());
     std::vector<std::vector<float>> distances(quer_vecs.size());
 
@@ -15,24 +15,20 @@ std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> s
     std::cout << "[SEARCH] Search completed" << std::endl;
 
     // Reformat output data from std::vector<std::vector<search_result_t>>
-    for (size_t i = 0; i < batch_results.size(); ++i)
-    {
+    for (size_t i = 0; i < batch_results.size(); ++i) {
         const auto &query_results = batch_results[i];
 
-        for (const auto &result : query_results)
-        {
-            distances[i].push_back(result.first); // float distance
-            node_ids[i].push_back(result.second); // nodeID_t (uint32_t)
+        for (const auto &result : query_results) {
+            distances[i].push_back(result.first);  // float distance
+            node_ids[i].push_back(result.second);  // nodeID_t (uint32_t)
         }
     }
 
     return {node_ids, distances};
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc != 3)
-    {
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <quer_file.txt> <search.index>" << std::endl;
         return 1;
     }
@@ -42,11 +38,11 @@ int main(int argc, char *argv[])
 
     // Load query file
     std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    std::vector<std::string> sequences = read_file(query_file).first;
 
     // Embed input queries
     std::cout << "[MAIN] Start inference" << std::endl;
-    Vectorizer vectorizer; // Use default params
+    Vectorizer vectorizer;  // Use default params
 
     std::vector<std::vector<float>> quer_vecs = vectorizer.vectorize(sequences);
     std::cout << "[MAIN] Inference completed" << std::endl;
@@ -67,8 +63,8 @@ int main(int argc, char *argv[])
 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     size_t numQueries = quer_vecs.size();
-    std::cout << "[MAIN] Parallel search for " << numQueries << " queries took: "
-              << duration.count() << " ms" << std::endl;
+    std::cout << "[MAIN] Parallel search for " << numQueries << " queries took: " << duration.count() << " ms"
+              << std::endl;
     std::cout << "Average per query: " << (duration.count() * 1000.0 / numQueries) << " μs" << std::endl;
 
     std::cout << "[MAIN] Save results to file..." << std::endl;
@@ -81,10 +77,8 @@ int main(int argc, char *argv[])
     std::vector<uint32_t> host_indices(n_rows * k);
     std::vector<float> host_distances(n_rows * k);
 
-    for (size_t i = 0; i < n_rows; ++i)
-    {
-        for (size_t j = 0; j < k; ++j)
-        {
+    for (size_t i = 0; i < n_rows; ++i) {
+        for (size_t j = 0; j < k; ++j) {
             host_indices[i * k + j] = neighbors[i][j];
             host_distances[i * k + j] = distances[i][j];
         }
@@ -94,9 +88,11 @@ int main(int argc, char *argv[])
     std::string indices_file = "indices.npy";
     std::string distances_file = "distances.npy";
 
-    cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+    cnpy::npy_save(indices_file, host_indices.data(),
+                   {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
-    cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+    cnpy::npy_save(distances_file, host_distances.data(),
+                   {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
     std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
     std::cout << "[MAIN] Parallel Search completed!" << std::endl;

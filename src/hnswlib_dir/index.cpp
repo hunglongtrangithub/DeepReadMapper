@@ -1,7 +1,6 @@
 #include "hnswlib_dir/index.hpp"
 
-void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M, int EFC)
-{
+void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M, int EFC) {
     // Build parameters
     int dim = input_data[0].size();
     int final_M = (M == -1) ? Config::Build::GPH_DEG : M;
@@ -9,26 +8,23 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
     size_t num_elements = input_data.size();
 
     // Validate input data
-    if (num_elements == 0)
-    {
+    if (num_elements == 0) {
         throw std::runtime_error("Input data is empty");
     }
 
     // Init index
     hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, num_elements, final_M, final_EFC);
+    hnswlib::HierarchicalNSW<float> *alg_hnsw =
+        new hnswlib::HierarchicalNSW<float>(&space, num_elements, final_M, final_EFC);
 
     // Hide cursor and create progress bar
     indicators::show_console_cursor(false);
     indicators::ProgressBar progressBar{
-        indicators::option::BarWidth{80},
-        indicators::option::PrefixText{"building index"},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true}};
+        indicators::option::BarWidth{80}, indicators::option::PrefixText{"building index"},
+        indicators::option::ShowElapsedTime{true}, indicators::option::ShowRemainingTime{true}};
 
     // Add data to index
-    for (size_t i = 0; i < num_elements; i++)
-    {
+    for (size_t i = 0; i < num_elements; i++) {
         alg_hnsw->addPoint(input_data[i].data(), i);
 
         // Update progress bar
@@ -47,10 +43,8 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
     std::cout << "Index built and saved to: " << index_file << std::endl;
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc < 3 || argc > 5)
-    {
+int main(int argc, char *argv[]) {
+    if (argc < 3 || argc > 5) {
         std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index> [EFC] [M]" << std::endl;
         return 1;
     }
@@ -62,13 +56,11 @@ int main(int argc, char *argv[])
     int custom_EFC = -1;
     int custom_M = -1;
 
-    if (argc >= 4)
-    {
+    if (argc >= 4) {
         custom_EFC = std::stoi(argv[3]);
     }
 
-    if (argc >= 5)
-    {
+    if (argc >= 5) {
         custom_M = std::stoi(argv[4]);
     }
 
@@ -82,8 +74,7 @@ int main(int argc, char *argv[])
     std::cout << "[BUILD INDEX] Reading sequences from file: " << ref_file << std::endl;
     auto [sequences, _] = read_file(ref_file);
 
-    if (sequences.empty())
-    {
+    if (sequences.empty()) {
         std::cerr << "No sequences found in file: " << ref_file << std::endl;
         return 1;
     }

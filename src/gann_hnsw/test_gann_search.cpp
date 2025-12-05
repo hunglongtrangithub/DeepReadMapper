@@ -1,14 +1,13 @@
+#include <chrono>
+#include <iostream>
+
+#include "cnpy.h"  // For saving numpy arrays
 #include "gann_hnsw.hpp"
-#include "cnpy.h" // For saving numpy arrays
 #include "utils.hpp"
 #include "vectorize.hpp"
-#include <iostream>
-#include <chrono>
 
-int main(int argc, char *argv[])
-{
-    if (argc != 6)
-    {
+int main(int argc, char *argv[]) {
+    if (argc != 6) {
         std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k> <num_threads>" << std::endl;
         std::cerr << "Example: " << argv[0] << " index.bin queries.txt 50 10" << std::endl;
         return 1;
@@ -21,17 +20,16 @@ int main(int argc, char *argv[])
     int num_threads = std::stoi(argv[5]);
 
     std::cout << "[SEARCH] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    std::vector<std::string> sequences = read_file(query_file).first;
 
     // Embed input queries
     std::cout << "[SEARCH] Start inference for " << sequences.size() << " queries" << std::endl;
-    Vectorizer vectorizer; // Use default params
+    Vectorizer vectorizer;  // Use default params
 
     std::vector<std::vector<float>> embeddings = vectorizer.vectorize(sequences);
     std::cout << "[SEARCH] Inference completed" << std::endl;
 
-    if (embeddings.empty())
-    {
+    if (embeddings.empty()) {
         std::cerr << "[SEARCH] Error: No query embeddings generated!" << std::endl;
         return 1;
     }
@@ -42,8 +40,7 @@ int main(int argc, char *argv[])
     // Create index with dummy parameters (will be overwritten by load)
     GannHNSW index(embeddings[0].size(), 1000000, 16, 200);
 
-    if (!index.load(index_file))
-    {
+    if (!index.load(index_file)) {
         std::cerr << "[SEARCH] Error: Failed to load index from " << index_file << std::endl;
         return 1;
     }
@@ -57,12 +54,9 @@ int main(int argc, char *argv[])
 
     // Perform search
     GannHNSW::SearchResult result;
-    try
-    {
+    try {
         result = index.search(embeddings, k, ef, num_threads);
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "[SEARCH] Error during search: " << e.what() << std::endl;
         return 1;
     }
@@ -76,13 +70,10 @@ int main(int argc, char *argv[])
     std::vector<std::vector<uint32_t>> neighbors(num_queries, std::vector<uint32_t>(k));
     std::vector<std::vector<float>> distances(num_queries, std::vector<float>(k));
 
-    for (size_t i = 0; i < num_queries; ++i)
-    {
-        for (size_t j = 0; j < k; ++j)
-        {
+    for (size_t i = 0; i < num_queries; ++i) {
+        for (size_t j = 0; j < k; ++j) {
             size_t idx = i * k + j;
-            if (idx < result.ids.size())
-            {
+            if (idx < result.ids.size()) {
                 neighbors[i][j] = result.ids[idx];
                 distances[i][j] = result.distances[idx];
             }
@@ -91,12 +82,10 @@ int main(int argc, char *argv[])
 
     // Print sample results
     size_t cout_size = std::min(neighbors.size(), static_cast<size_t>(10));
-    size_t cout_k = std::min(10, k); // Limit output to first 10 neighbors
-    for (size_t i = 0; i < cout_size; ++i)
-    {
+    size_t cout_k = std::min(10, k);  // Limit output to first 10 neighbors
+    for (size_t i = 0; i < cout_size; ++i) {
         std::cout << "Query " << i << ": ";
-        for (size_t j = 0; j < cout_k; ++j)
-        {
+        for (size_t j = 0; j < cout_k; ++j) {
             std::cout << "(" << neighbors[i][j] << ", " << distances[i][j] << ") ";
         }
         std::cout << std::endl;
@@ -110,18 +99,18 @@ int main(int argc, char *argv[])
     std::vector<uint32_t> host_indices(num_queries * k);
     std::vector<float> host_distances(num_queries * k);
 
-    for (size_t i = 0; i < num_queries; ++i)
-    {
-        for (size_t j = 0; j < k; ++j)
-        {
+    for (size_t i = 0; i < num_queries; ++i) {
+        for (size_t j = 0; j < k; ++j) {
             host_indices[i * k + j] = neighbors[i][j];
             host_distances[i * k + j] = distances[i][j];
         }
     }
 
     // Save using cnpy with configurable file names
-    cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(num_queries), static_cast<unsigned long>(k)});
-    cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(num_queries), static_cast<unsigned long>(k)});
+    cnpy::npy_save(indices_file, host_indices.data(),
+                   {static_cast<unsigned long>(num_queries), static_cast<unsigned long>(k)});
+    cnpy::npy_save(distances_file, host_distances.data(),
+                   {static_cast<unsigned long>(num_queries), static_cast<unsigned long>(k)});
 
     std::cout << "[SEARCH] Results saved to " << indices_file << " and " << distances_file << std::endl;
     std::cout << "[SEARCH] Search process completed!" << std::endl;

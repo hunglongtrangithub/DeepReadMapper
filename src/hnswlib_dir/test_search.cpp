@@ -1,14 +1,13 @@
 #include <chrono>
 #include <iostream>
+
 #include "cnpy.h"
 #include "hnswlib_dir/search.hpp"
 #include "utils.hpp"
 #include "vectorize.hpp"
 
-int main(int argc, char *argv[])
-{
-    if (argc != 5)
-    {
+int main(int argc, char *argv[]) {
+    if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k>" << std::endl;
         return 1;
     }
@@ -23,7 +22,7 @@ int main(int argc, char *argv[])
 
     // Embed input queries
     std::cout << "[MAIN] Start inference" << std::endl;
-    Vectorizer vectorizer; // Use default params
+    Vectorizer vectorizer;  // Use default params
 
     std::vector<std::vector<float>> embeddings = vectorizer.vectorize(sequences);
     std::cout << "[MAIN] Inference completed" << std::endl;
@@ -46,12 +45,10 @@ int main(int argc, char *argv[])
     std::cout << "[MAIN] Search completed in " << duration.count() << " ms" << std::endl;
 
     size_t cout_size = std::min(neighbors.size(), static_cast<size_t>(10));
-    size_t cout_k = std::min(10, static_cast<int>(neighbors[0].size())); // Limit output to first 10 neighbors
-    for (size_t i = 0; i < cout_size; ++i)
-    {
+    size_t cout_k = std::min(10, static_cast<int>(neighbors[0].size()));  // Limit output to first 10 neighbors
+    for (size_t i = 0; i < cout_size; ++i) {
         std::cout << "Query " << i << ": ";
-        for (size_t j = 0; j < cout_k; ++j)
-        {
+        for (size_t j = 0; j < cout_k; ++j) {
             std::cout << "(" << neighbors[i][j] << ", " << distances[i][j] << ") ";
         }
         std::cout << std::endl;
@@ -65,23 +62,23 @@ int main(int argc, char *argv[])
     std::vector<uint32_t> host_indices(n_rows * k);
     std::vector<float> host_distances(n_rows * k);
 
-    for (size_t i = 0; i < n_rows; ++i)
-    {
-        for (size_t j = 0; j < k; ++j)
-        {
+    for (size_t i = 0; i < n_rows; ++i) {
+        for (size_t j = 0; j < k; ++j) {
             host_indices[i * k + j] = neighbors[i][j];
             host_distances[i * k + j] = distances[i][j];
         }
     }
 
     // Save using cnpy with configurable file names
-    cnpy::npy_save(indices_file, host_indices.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
-    cnpy::npy_save(distances_file, host_distances.data(), {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+    cnpy::npy_save(indices_file, host_indices.data(),
+                   {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
+    cnpy::npy_save(distances_file, host_distances.data(),
+                   {static_cast<unsigned long>(n_rows), static_cast<unsigned long>(k)});
 
     std::cout << "[MAIN] Results saved to " << indices_file << " and " << distances_file << std::endl;
 
-    std::cout <<"[MAIN] Finish search" << std::endl;
+    std::cout << "[MAIN] Finish search" << std::endl;
 
-    delete index; // Clean up
+    delete index;  // Clean up
     return 0;
 }

@@ -1,9 +1,9 @@
 #pragma once
-#include <string>
-#include <vector>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #ifdef __AVX2__
 #include <immintrin.h>

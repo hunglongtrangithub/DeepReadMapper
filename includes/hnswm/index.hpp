@@ -1,9 +1,10 @@
 #pragma once
 
-#include <iostream>
-#include <vector>
-#include <string>
 #include <chrono>
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "hnsw.h"
 #include "utils.hpp"
 #include "vectorize.hpp"
