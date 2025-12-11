@@ -3,7 +3,6 @@
 #include <hnswlib/hnswlib.h>
 #include <omp.h>
 
-#include <string>
 #include <vector>
 
 #include "config.hpp"
@@ -15,5 +14,5 @@
 /// @param ef Search parameter for HNSW (default: from Config::Search::EF)
 /// @return A pair of 1D arrays, 1st contain neighbor_ids, 2nd contain respective distances.
 std::pair<std::vector<std::vector<hnswlib::labeltype>>, std::vector<std::vector<float>>> search(
-    hnswlib::HierarchicalNSW<float> *index, const std::vector<std::vector<float>> &query_data,
+    hnswlib::HierarchicalNSW<float>* index, const std::vector<std::vector<float>>& query_data,
     int k = Config::Search::K, int ef = Config::Search::EF);

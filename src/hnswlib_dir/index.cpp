@@ -1,6 +1,12 @@
 #include "hnswlib_dir/index.hpp"
 
-void build_index(const std::vector<std::vector<float>> &input_data, const std::string &index_file, int M, int EFC) {
+#include <iostream>
+
+#include "config.hpp"
+#include "utils.hpp"
+#include "vectorize.hpp"
+
+void build_index(const std::vector<std::vector<float>>& input_data, const std::string& index_file, int M, int EFC) {
     // Build parameters
     int dim = input_data[0].size();
     int final_M = (M == -1) ? Config::Build::GPH_DEG : M;
@@ -14,7 +20,7 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
 
     // Init index
     hnswlib::L2Space space(dim);
-    hnswlib::HierarchicalNSW<float> *alg_hnsw =
+    hnswlib::HierarchicalNSW<float>* alg_hnsw =
         new hnswlib::HierarchicalNSW<float>(&space, num_elements, final_M, final_EFC);
 
     // Hide cursor and create progress bar
@@ -43,7 +49,7 @@ void build_index(const std::vector<std::vector<float>> &input_data, const std::s
     std::cout << "Index built and saved to: " << index_file << std::endl;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc < 3 || argc > 5) {
         std::cerr << "Usage: " << argv[0] << " <ref_seq.txt> <search.index> [EFC] [M]" << std::endl;
         return 1;

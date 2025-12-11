@@ -2,6 +2,9 @@
 
 #include "CLI11.hpp"
 #include "cnpy.h"
+#include "config.hpp"
+#include "utils.hpp"
+#include "vectorize.hpp"
 
 /// @brief Calculate estimated memory usage for IndexHNSWPQ
 size_t estimate_memory(size_t num_vectors, size_t dim, int M_pq, int nbits, int M_hnsw, size_t n_train) {

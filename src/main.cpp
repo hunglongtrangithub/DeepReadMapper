@@ -1,5 +1,6 @@
 #include "cnpy.h"
 #include "config.hpp"
+#include "parse_inputs.hpp"
 #include "post_processor.hpp"
 #include "utils.hpp"
 #include "utils/CLI11.hpp"
@@ -9,7 +10,7 @@
 
 #include "hnswpq/search.hpp"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     // Setup CLI11 application
     CLI::App app{"DeepReadMapper: Deep learning-based gene alignment using vector similarity search"};
 
@@ -144,7 +145,7 @@ int main(int argc, char *argv[]) {
             std::cout << "[MAIN] Loaded " << num_queries << " embeddings of dimension " << embedding_dim << std::endl;
 
             // Convert to vector<vector<float>>
-            float *data = arr.data<float>();
+            float* data = arr.data<float>();
             embeddings.resize(num_queries);
             for (size_t i = 0; i < num_queries; ++i) {
                 embeddings[i].resize(embedding_dim);
@@ -246,8 +247,8 @@ int main(int argc, char *argv[]) {
         // hnswlib::HierarchicalNSW<float> *alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, index_file);
 
         //* Load HNSWPQ index
-        faiss::Index *loaded_index = faiss::read_index(index_file.c_str());
-        faiss::IndexHNSWPQ *alg_hnsw = dynamic_cast<faiss::IndexHNSWPQ *>(loaded_index);
+        faiss::Index* loaded_index = faiss::read_index(index_file.c_str());
+        faiss::IndexHNSWPQ* alg_hnsw = dynamic_cast<faiss::IndexHNSWPQ*>(loaded_index);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -256,7 +257,7 @@ int main(int argc, char *argv[]) {
         std::cout << "[MAIN] Index loaded time: " << duration.count() << " ms" << std::endl << std::endl;
 
         // Inference step - only if we have sequences to vectorize
-        Vectorizer *vectorizer = nullptr;  // Declare here
+        Vectorizer* vectorizer = nullptr;  // Declare here
 
         if (!is_precomputed_embeddings) {
             std::cout << "[MAIN] INFERENCE STEP" << std::endl;
@@ -298,7 +299,7 @@ int main(int argc, char *argv[]) {
                   << std::endl;
 
         int total_nei = 0;
-        for (const auto &nei : neighbors) total_nei += nei.size();
+        for (const auto& nei : neighbors) total_nei += nei.size();
         std::cout << "[MAIN] Total neighbors: " << total_nei << std::endl;
         std::cout << "[MAIN] Avg neighbors/query: " << (static_cast<float>(total_nei) / neighbors.size()) << std::endl
                   << std::endl;
@@ -430,7 +431,7 @@ int main(int argc, char *argv[]) {
         if (vectorizer != nullptr) {
             delete vectorizer;
         }
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     } catch (...) {

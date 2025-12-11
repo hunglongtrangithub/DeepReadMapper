@@ -1,15 +1,6 @@
 #include <omp.h>
 
-#include <chrono>
-#include <functional>
-#include <memory>
-#include <type_traits>
-
-#include "config.hpp"
-#include "parse_inputs.hpp"
 #include "progressbar.h"
-#include "reranker.hpp"
-#include "utils.hpp"
 #include "vectorize.hpp"
 
 struct PositionInfo {
@@ -22,7 +13,7 @@ struct PositionInfo {
 /// @param label HNSWPQ sequential label
 /// @param mapping Custom vector that map sequential label to original position
 /// @return PositionInfo struct containing position and RC flag
-PositionInfo position_decode(size_t label, const std::vector<size_t> &mapping);
+PositionInfo position_decode(size_t label, const std::vector<size_t>& mapping);
 
 /// @brief Reformat raw HNSW output (vector of pairs) into two separate vectors - templated to handle any neighbor type
 /// @param neighbors Vector of vectors containing neighbor indices (size_t or long int)
@@ -30,7 +21,7 @@ PositionInfo position_decode(size_t label, const std::vector<size_t> &mapping);
 /// @return Pair of vectors: 1st is labels, 2nd is distances
 template <typename NeighborType>
 std::pair<std::vector<size_t>, std::vector<float>> reformat_output(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
     size_t k);
 
 /// @brief Find full-length sequence from a reference genome string. This method is called "dynamic fetching" in which
@@ -39,14 +30,14 @@ std::pair<std::vector<size_t>, std::vector<float>> reformat_output(
 /// @param id Id of the sequence to find
 /// @param ref_len Length of each reference sequence, doesn't include PREFIX/POSTFIX
 /// @return Sequence string, or empty string if not found
-std::string find_sequence(const std::string &ref_genome, size_t id, size_t ref_len);
+std::string find_sequence(const std::string& ref_genome, size_t id, size_t ref_len);
 
 /// @brief Find full-length sequence from a vector of reference sequences. This method is called "static fetching" in
 /// which the candidate sequences are pre-extracted and stored in a vector.
 /// @param ref_seqs Vector of reference sequences
 /// @param id Id of the sequence to find
 /// @return Sequence string
-std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_t id);
+std::string find_sequence_static(const std::vector<std::string>& ref_seqs, size_t id);
 
 /// @brief Wrapper to find multiple sequences asynchronously from dynamic reference genome
 /// @param ref_genome Reference genome as a single string
@@ -56,7 +47,7 @@ std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_
 /// @return Vector of sequences found, in the same order as ids, along with their dense IDs and mapping indices to the
 /// unique pool
 std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
-    const std::string &ref_genome, const std::vector<size_t> &sparse_ids, size_t ref_len, size_t stride = 1);
+    const std::string& ref_genome, const std::vector<size_t>& sparse_ids, size_t ref_len, size_t stride = 1);
 
 /// @brief Wrapper to find multiple sequences asynchronously from static reference sequences (Overload for static
 /// fetching)
@@ -66,13 +57,13 @@ std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> f
 /// @return Vector of sequences found, in the same order as ids, along with their dense IDs and mapping indices to the
 /// unique pool
 std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
-    const std::vector<std::string> &ref_seqs, const std::vector<size_t> &sparse_ids, size_t stride = 1);
+    const std::vector<std::string>& ref_seqs, const std::vector<size_t>& sparse_ids, size_t stride = 1);
 
 /// @brief Helper function to convert neighbor types to size_t
 template <typename NeighborType>
 /// @param neighbors 2D vector of neighbor indices (any integral type)
 /// @return 2D vector of neighbor indices as size_t
-std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector<NeighborType>> &neighbors);
+std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector<NeighborType>>& neighbors);
 
 /// @brief Post-process with Smith-Waterman reranking using dynamic sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -86,8 +77,8 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
 /// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::string &ref_genome, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::string& ref_genome, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride, size_t k,
     size_t k_clusters = 5);
 
 /// @brief Post-process with Smith-Waterman reranking using static sequence fetching
@@ -102,8 +93,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 /// @return Tuple of vectors: 1st is sequences, 2nd is Smith-Waterman scores, 3rd is original IDs
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::vector<std::string>& ref_seqs, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride,
     size_t k, size_t k_clusters = 5);
 
 /// @brief Post-process with L2 distance reranking using dynamic sequence fetching
@@ -120,9 +111,9 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 /// @return Tuple ( sequences, L2 distances, original IDs )
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::string &ref_genome, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k,
-    const std::vector<std::vector<float>> &query_embeddings, Vectorizer &vectorizer, size_t k_clusters = 5);
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::string& ref_genome, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<float>>& query_embeddings, Vectorizer& vectorizer, size_t k_clusters = 5);
 
 /// @brief Post-process with L2 distance reranking using dynamic sequence fetching with streaming output to SAM file
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -140,13 +131,13 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 /// @param ref_name Reference sequence name (for SAM header)
 /// @note This function writes results directly to the SAM file in streaming mode to save memory -> Return nothing
 template <typename NeighborType>
-void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborType>> &neighbors,
-                                       const std::vector<std::vector<float>> &distances, const std::string &ref_genome,
-                                       const std::vector<std::string> &query_seqs,
-                                       const std::vector<std::string> &query_ids, size_t ref_len, size_t stride,
-                                       size_t k, const std::vector<std::vector<float>> &query_embeddings,
-                                       Vectorizer &vectorizer, size_t k_clusters, const std::string &sam_file,
-                                       const std::string &ref_name);
+void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborType>>& neighbors,
+                                       const std::vector<std::vector<float>>& distances, const std::string& ref_genome,
+                                       const std::vector<std::string>& query_seqs,
+                                       const std::vector<std::string>& query_ids, size_t ref_len, size_t stride,
+                                       size_t k, const std::vector<std::vector<float>>& query_embeddings,
+                                       Vectorizer& vectorizer, size_t k_clusters, const std::string& sam_file,
+                                       const std::string& ref_name);
 
 /// @brief Post-process with L2 distance reranking using static sequence fetching
 /// @param neighbors 2D vector of neighbor indices from HNSW search (size_t or long int)
@@ -164,6 +155,6 @@ void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborTyp
 /// @return Tuple ( sequences, L2 distances, original IDs )
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride,
-    size_t k, const std::vector<std::vector<float>> &query_embeddings, Vectorizer &vectorizer, size_t k_clusters = 5);
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::vector<std::string>& ref_seqs, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride,
+    size_t k, const std::vector<std::vector<float>>& query_embeddings, Vectorizer& vectorizer, size_t k_clusters = 5);

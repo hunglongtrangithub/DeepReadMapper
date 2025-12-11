@@ -1,13 +1,7 @@
 #pragma once
 
-#include <chrono>
-#include <iostream>
 #include <string>
 #include <vector>
-
-#include "hnsw.h"
-#include "utils.hpp"
-#include "vectorize.hpp"
 
 /// @brief Build an HNSW index from a given vector lists and save it to an index file.
 /// @param ref_vecs A 2D vector where each inner vector is a reference vector

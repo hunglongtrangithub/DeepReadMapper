@@ -3,11 +3,9 @@
 #include <immintrin.h>
 
 #include <cctype>
-#include <stdexcept>
 #include <vector>
 
 #include "progressbar.h"
-#include "tok2index.hpp"
 
 static inline uint8_t char2Val(const char c) {
     switch (c) {
@@ -46,14 +44,14 @@ static inline uint8_t hashToken(const char token0, const char token1, const char
 
 class Preprocessor {
    private:
-    std::vector<const char *> tokens_;
+    std::vector<const char*> tokens_;
     std::vector<uint16_t> indices_;
 
    public:
     Preprocessor();
 
-    std::vector<uint16_t> preprocess(const std::string &seq, unsigned maxLen);
+    std::vector<uint16_t> preprocess(const std::string& seq, unsigned maxLen);
 
-    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen,
+    std::vector<std::vector<uint16_t>> preprocessBatch(const std::vector<std::string>& seqs, unsigned maxLen,
                                                        bool verbose = true);
 };

@@ -1,7 +1,15 @@
 #include "hnswm/search.hpp"
 
+#include <chrono>
+#include <iostream>
+
+#include "cnpy.h"
+#include "config.hpp"
+#include "utils.hpp"
+#include "vectorize.hpp"
+
 std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> search(
-    const std::vector<std::vector<float>> &quer_vecs, HNSW &index) {
+    const std::vector<std::vector<float>>& quer_vecs, HNSW& index) {
     std::vector<std::vector<uint32_t>> node_ids(quer_vecs.size());
     std::vector<std::vector<float>> distances(quer_vecs.size());
 
@@ -16,9 +24,9 @@ std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> s
 
     // Reformat output data from std::vector<std::vector<search_result_t>>
     for (size_t i = 0; i < batch_results.size(); ++i) {
-        const auto &query_results = batch_results[i];
+        const auto& query_results = batch_results[i];
 
-        for (const auto &result : query_results) {
+        for (const auto& result : query_results) {
             distances[i].push_back(result.first);  // float distance
             node_ids[i].push_back(result.second);  // nodeID_t (uint32_t)
         }
@@ -27,7 +35,7 @@ std::pair<std::vector<std::vector<uint32_t>>, std::vector<std::vector<float>>> s
     return {node_ids, distances};
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <quer_file.txt> <search.index>" << std::endl;
         return 1;

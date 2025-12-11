@@ -1,12 +1,15 @@
 #include "metrics.hpp"
 
-int calc_sw_score_avx2(const std::string &seq1, const std::string &seq2) {
+#include <algorithm>
+#include <stdexcept>
+
+int calc_sw_score_avx2(const std::string& seq1, const std::string& seq2) {
     // TODO: Implement AVX2 optimized Smith-Waterman here
     // https://www.danysoft.com/estaticos/free/24%20-%20Case%20study%20-%20Pairwise%20sequence%20alignment%20with%20the%20Smith-Waterman%20algorithm.pdf
     return 0;  // Placeholder
 }
 
-int calc_sw_score(const std::string &seq1, const std::string &seq2) {
+int calc_sw_score(const std::string& seq1, const std::string& seq2) {
     // #ifdef __AVX2__
     //     // AVX2 optimized version here
     //     return calc_sw_score_avx2(seq1, seq2);
@@ -40,7 +43,7 @@ int calc_sw_score(const std::string &seq1, const std::string &seq2) {
     // #endif
 }
 
-float calc_l2_dist(const std::vector<float> &vec1, const std::vector<float> &vec2) {
+float calc_l2_dist(const std::vector<float>& vec1, const std::vector<float>& vec2) {
     if (vec1.size() != vec2.size()) {
         throw std::invalid_argument("Vector sizes mismatch: " + std::to_string(vec1.size()) + " vs " +
                                     std::to_string(vec2.size()));

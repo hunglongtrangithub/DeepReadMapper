@@ -1,9 +1,10 @@
 #include <fstream>
 #include <vector>
 
+#include "metrics.hpp"
 #include "post_processor.hpp"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc == 3) {
         // Single pair mode (original functionality)
         std::string seq1 = argv[1];

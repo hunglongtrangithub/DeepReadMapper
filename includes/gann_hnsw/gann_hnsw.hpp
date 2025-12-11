@@ -2,21 +2,13 @@
 #include <immintrin.h>  // For SIMD operations
 #include <omp.h>
 
-#include <algorithm>
 #include <cereal/archives/binary.hpp>  // For serialization
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <memory>
-#include <mutex>
 #include <random>
-#include <set>
-#include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "progressbar.h"
@@ -64,7 +56,7 @@ class GannHNSW {
      * @param input_data A 2D array of input vectors, where each vector is a 1D array of floats.
      * @param num_threads Number of threads to use for parallel construction (default: 0 for auto-detect)
      */
-    void build(const std::vector<std::vector<float>> &input_data, size_t num_threads = 0);
+    void build(const std::vector<std::vector<float>>& input_data, size_t num_threads = 0);
 
     /**
      * @brief Search for k nearest neighbors using GANN's lazy update strategy
@@ -74,21 +66,21 @@ class GannHNSW {
      * @param num_threads Number of threads for parallel search (default: hardware concurrency)
      * @return SearchResult containing neighbor IDs and distances
      */
-    SearchResult search(const std::vector<std::vector<float>> &queryData, size_t k, size_t ef = 50,
+    SearchResult search(const std::vector<std::vector<float>>& queryData, size_t k, size_t ef = 50,
                         size_t num_threads = 0) const;
 
     /**
      * @brief Save the built index to file
      * @param index_file Path to save the index file
      */
-    void save(const std::string &index_file) const;
+    void save(const std::string& index_file) const;
 
     /**
      * @brief Load index from file
      * @param index_file Path to the index file
      * @return True if loaded successfully, false otherwise
      */
-    bool load(const std::string &index_file);
+    bool load(const std::string& index_file);
 
     /**
      * @brief Get the number of elements in the index
@@ -106,13 +98,13 @@ class GannHNSW {
      * @param ar The archive to serialize to/from
      */
     template <class Archive>
-    void serialize(Archive &ar) {
-        ar(cereal::make_nvp("dimension", const_cast<size_t &>(dimension_)),
-           cereal::make_nvp("max_elements", const_cast<size_t &>(max_elements_)),
-           cereal::make_nvp("M", const_cast<size_t &>(M_)), cereal::make_nvp("dmin", const_cast<size_t &>(dmin_)),
-           cereal::make_nvp("dmax", const_cast<size_t &>(dmax_)),
-           cereal::make_nvp("ef_construction", const_cast<size_t &>(ef_construction_)),
-           cereal::make_nvp("ml", const_cast<double &>(ml_)), cereal::make_nvp("data", data_),
+    void serialize(Archive& ar) {
+        ar(cereal::make_nvp("dimension", const_cast<size_t&>(dimension_)),
+           cereal::make_nvp("max_elements", const_cast<size_t&>(max_elements_)),
+           cereal::make_nvp("M", const_cast<size_t&>(M_)), cereal::make_nvp("dmin", const_cast<size_t&>(dmin_)),
+           cereal::make_nvp("dmax", const_cast<size_t&>(dmax_)),
+           cereal::make_nvp("ef_construction", const_cast<size_t&>(ef_construction_)),
+           cereal::make_nvp("ml", const_cast<double&>(ml_)), cereal::make_nvp("data", data_),
            cereal::make_nvp("layers", layers_), cereal::make_nvp("entry_point", entry_point_),
            cereal::make_nvp("num_elements", num_elements_), cereal::make_nvp("max_level", max_level_));
     }
@@ -127,7 +119,7 @@ class GannHNSW {
 
         // Cereal serialization
         template <class Archive>
-        void serialize(Archive &ar) {
+        void serialize(Archive& ar) {
             ar(id, neighbors, explored, distance_to_query);
         }
     };
@@ -138,7 +130,7 @@ class GannHNSW {
 
         // Cereal serialization
         template <class Archive>
-        void serialize(Archive &ar) {
+        void serialize(Archive& ar) {
             ar(vertices, level);
         }
     };
@@ -175,31 +167,31 @@ class GannHNSW {
     mutable std::uniform_real_distribution<double> level_distribution_;
 
     // GANN index construction
-    void buildLayer(size_t level, const std::vector<VertexId> &vertices, size_t num_threads);
-    void buildLocalGraph(const std::vector<VertexId> &partition, std::vector<Vertex> &local_graph, size_t level);
+    void buildLayer(size_t level, const std::vector<VertexId>& vertices, size_t num_threads);
+    void buildLocalGraph(const std::vector<VertexId>& partition, std::vector<Vertex>& local_graph, size_t level);
 
-    SearchResult searchLayerForConstruction(const std::vector<float> &query, size_t k, size_t level,
+    SearchResult searchLayerForConstruction(const std::vector<float>& query, size_t k, size_t level,
                                             VertexId entry_point) const;
 
-    void gatherScatter(std::vector<std::pair<VertexId, VertexId>> &edge_list, std::vector<size_t> &indices);
+    void gatherScatter(std::vector<std::pair<VertexId, VertexId>>& edge_list, std::vector<size_t>& indices);
 
-    void processBackwardEdges(Layer &layer, const std::vector<std::pair<VertexId, VertexId>> &edge_list,
-                              const std::vector<size_t> &indices);
-    void pruneConnections(Vertex &vertex);
+    void processBackwardEdges(Layer& layer, const std::vector<std::pair<VertexId, VertexId>>& edge_list,
+                              const std::vector<size_t>& indices);
+    void pruneConnections(Vertex& vertex);
 
-    SearchResult searchLocalGraph(const std::vector<float> &query, const std::vector<Vertex> &local_graph,
+    SearchResult searchLocalGraph(const std::vector<float>& query, const std::vector<Vertex>& local_graph,
                                   size_t k) const;
-    void buildLocalGraphsParallel(const std::vector<VertexId> &vertices, size_t level, size_t num_threads);
+    void buildLocalGraphsParallel(const std::vector<VertexId>& vertices, size_t level, size_t num_threads);
     void mergeLocalGraphs(size_t level);
 
     // GANN search implementation
-    SearchResult searchLayer(const std::vector<float> &query, size_t k, size_t ef, size_t level,
+    SearchResult searchLayer(const std::vector<float>& query, size_t k, size_t ef, size_t level,
                              VertexId entry_point) const;
-    SearchResult searchQuery(const std::vector<float> &query, size_t k, size_t ef) const;
+    SearchResult searchQuery(const std::vector<float>& query, size_t k, size_t ef) const;
 
-    void computeDistanceParallel(const std::vector<float> &query, std::vector<Vertex> &candidates) const;
+    void computeDistanceParallel(const std::vector<float>& query, std::vector<Vertex>& candidates) const;
 
     // Utility functions
-    Distance computeDistance(const std::vector<float> &a, const std::vector<float> &b) const;
+    Distance computeDistance(const std::vector<float>& a, const std::vector<float>& b) const;
     size_t getRandomLevel() const;
 };

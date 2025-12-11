@@ -1,18 +1,24 @@
 #include "gann_hnsw.hpp"
 
+#include <fstream>
+#include <iostream>
+#include <set>
+#include <stdexcept>
+#include <thread>
+
 /**
  * @brief Compute L2 distance between two vectors using AVX512 optimization
  * @param a First vector
  * @param b Second vector
  * @return L2 distance between vectors
  */
-GannHNSW::Distance GannHNSW::computeDistance(const std::vector<float> &a, const std::vector<float> &b) const {
+GannHNSW::Distance GannHNSW::computeDistance(const std::vector<float>& a, const std::vector<float>& b) const {
     if (a.size() != b.size() || a.size() != dimension_) {
         throw std::invalid_argument("Vector dimensions must match and equal to index dimension");
     }
 
-    const float *ptr_a = a.data();
-    const float *ptr_b = b.data();
+    const float* ptr_a = a.data();
+    const float* ptr_b = b.data();
     const size_t dim = dimension_;
 
 // Use AVX2 if available and dimension is large enough
@@ -103,7 +109,7 @@ size_t GannHNSW::getRandomLevel() const {
  * @param vertices List of vertex IDs to include in this layer
  * @param num_threads Number of threads for parallel construction
  */
-void GannHNSW::buildLayer(size_t level, const std::vector<VertexId> &vertices, size_t num_threads) {
+void GannHNSW::buildLayer(size_t level, const std::vector<VertexId>& vertices, size_t num_threads) {
     if (vertices.empty()) return;
 
     std::cout << "Building layer " << level << " with " << vertices.size() << " vertices..." << std::endl;
@@ -113,7 +119,7 @@ void GannHNSW::buildLayer(size_t level, const std::vector<VertexId> &vertices, s
         layers_.resize(level + 1);
     }
 
-    Layer &layer = layers_[level];
+    Layer& layer = layers_[level];
     layer.level = level;
     layer.vertices.clear();
     layer.vertices.reserve(vertices.size());
@@ -152,7 +158,7 @@ void GannHNSW::buildLayer(size_t level, const std::vector<VertexId> &vertices, s
  * @param level Current layer level
  * @param num_threads Number of threads to use
  */
-void GannHNSW::buildLocalGraphsParallel(const std::vector<VertexId> &vertices, size_t level, size_t num_threads) {
+void GannHNSW::buildLocalGraphsParallel(const std::vector<VertexId>& vertices, size_t level, size_t num_threads) {
     if (num_threads == 0) {
         num_threads = std::thread::hardware_concurrency();
     }
@@ -178,7 +184,7 @@ void GannHNSW::buildLocalGraphsParallel(const std::vector<VertexId> &vertices, s
     }
 
     // Store all local graphs for iterative merging
-    Layer &layer = layers_[level];
+    Layer& layer = layers_[level];
     layer.vertices.clear();
 
     // Keep track of which vertices belong to which local graph for merging
@@ -197,7 +203,7 @@ void GannHNSW::buildLocalGraphsParallel(const std::vector<VertexId> &vertices, s
 /**
  * @brief Build a complete local NSW graph for a partition (GANN Algorithm 2 Phase 1)
  */
-void GannHNSW::buildLocalGraph(const std::vector<VertexId> &partition, std::vector<Vertex> &local_graph, size_t level) {
+void GannHNSW::buildLocalGraph(const std::vector<VertexId>& partition, std::vector<Vertex>& local_graph, size_t level) {
     local_graph.clear();
     local_graph.reserve(partition.size());
 
@@ -213,7 +219,7 @@ void GannHNSW::buildLocalGraph(const std::vector<VertexId> &partition, std::vect
 
     // Build NSW graph: each vertex connects to its dmin_ nearest neighbors in the SAME partition
     for (size_t i = 0; i < local_graph.size(); ++i) {
-        Vertex &current = local_graph[i];
+        Vertex& current = local_graph[i];
 
         // Find dmin_ nearest neighbors within this partition
         std::vector<std::pair<Distance, size_t>> neighbor_candidates;
@@ -254,8 +260,8 @@ void GannHNSW::buildLocalGraph(const std::vector<VertexId> &partition, std::vect
 /**
  * @brief Search within a local graph (simplified beam search for local construction)
  */
-GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &query,
-                                                  const std::vector<Vertex> &local_graph, size_t k) const {
+GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float>& query,
+                                                  const std::vector<Vertex>& local_graph, size_t k) const {
     SearchResult result;
     if (local_graph.empty()) {
         return result;
@@ -266,7 +272,7 @@ GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &quer
         // If local graph is small, just return all vertices sorted by distance
         std::vector<std::pair<Distance, VertexId>> candidates;
 
-        for (const auto &vertex : local_graph) {
+        for (const auto& vertex : local_graph) {
             Distance dist = computeDistance(query, data_[vertex.id]);
             candidates.emplace_back(dist, vertex.id);
         }
@@ -295,7 +301,7 @@ GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &quer
     while (!candidates.empty()) {
         // Sort candidates by distance
         std::sort(candidates.begin(), candidates.end(),
-                  [](const Vertex &a, const Vertex &b) { return a.distance_to_query < b.distance_to_query; });
+                  [](const Vertex& a, const Vertex& b) { return a.distance_to_query < b.distance_to_query; });
 
         // Take closest candidate
         Vertex current = candidates[0];
@@ -311,7 +317,7 @@ GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &quer
         for (VertexId neighbor_id : current.neighbors) {
             // Find neighbor index in local graph
             auto neighbor_it = std::find_if(local_graph.begin(), local_graph.end(),
-                                            [neighbor_id](const Vertex &v) { return v.id == neighbor_id; });
+                                            [neighbor_id](const Vertex& v) { return v.id == neighbor_id; });
 
             if (neighbor_it != local_graph.end()) {
                 size_t neighbor_idx = std::distance(local_graph.begin(), neighbor_it);
@@ -330,7 +336,7 @@ GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &quer
         // Limit candidate list size for efficiency
         if (candidates.size() > ef_construction_) {
             std::sort(candidates.begin(), candidates.end(),
-                      [](const Vertex &a, const Vertex &b) { return a.distance_to_query < b.distance_to_query; });
+                      [](const Vertex& a, const Vertex& b) { return a.distance_to_query < b.distance_to_query; });
             candidates.resize(ef_construction_);
         }
     }
@@ -341,14 +347,14 @@ GannHNSW::SearchResult GannHNSW::searchLocalGraph(const std::vector<float> &quer
 /**
  * @brief Prune connections to maintain dmax_ limit using distance-based selection
  */
-void GannHNSW::pruneConnections(Vertex &vertex) {
+void GannHNSW::pruneConnections(Vertex& vertex) {
     if (vertex.neighbors.size() <= dmax_) return;
 
     // Use the optimized computeDistance with AVX/AVX512
     std::vector<std::pair<Distance, VertexId>> neighbor_distances;
     neighbor_distances.reserve(vertex.neighbors.size());
 
-    const std::vector<float> &vertex_data = data_[vertex.id];
+    const std::vector<float>& vertex_data = data_[vertex.id];
 
     // CPU optimization: batch distance computation
     for (VertexId neighbor_id : vertex.neighbors) {
@@ -375,12 +381,12 @@ void GannHNSW::pruneConnections(Vertex &vertex) {
  * @param entry_point Starting vertex (can be 0 for construction)
  * @return SearchResult containing found neighbors from the global graph
  */
-GannHNSW::SearchResult GannHNSW::searchLayerForConstruction(const std::vector<float> &query, size_t k, size_t level,
+GannHNSW::SearchResult GannHNSW::searchLayerForConstruction(const std::vector<float>& query, size_t k, size_t level,
                                                             VertexId entry_point) const {
     SearchResult result;
     if (level >= layers_.size()) return result;
 
-    const Layer &layer = layers_[level];
+    const Layer& layer = layers_[level];
     if (layer.vertices.empty()) return result;
 
     // For construction, we search in the GLOBAL merged graph
@@ -388,7 +394,7 @@ GannHNSW::SearchResult GannHNSW::searchLayerForConstruction(const std::vector<fl
     std::vector<std::pair<Distance, VertexId>> all_candidates;
 
     // Consider ALL vertices in the current layer (merged from all partitions)
-    for (const auto &vertex : layer.vertices) {
+    for (const auto& vertex : layer.vertices) {
         Distance dist = computeDistance(query, data_[vertex.id]);
         all_candidates.emplace_back(dist, vertex.id);
     }
@@ -415,7 +421,7 @@ GannHNSW::SearchResult GannHNSW::searchLayerForConstruction(const std::vector<fl
 void GannHNSW::mergeLocalGraphs(size_t level) {
     if (level >= layers_.size()) return;
 
-    Layer &layer = layers_[level];
+    Layer& layer = layers_[level];
     if (layer.vertices.empty() || local_graph_partitions_.empty()) return;
 
     size_t num_partitions = local_graph_partitions_.size();
@@ -440,10 +446,10 @@ void GannHNSW::mergeLocalGraphs(size_t level) {
 // Phase 2a: Cross-graph search
 #pragma omp parallel for
         for (size_t p = iteration; p < num_partitions; ++p) {
-            auto &partition_range = local_graph_partitions_[p];
+            auto& partition_range = local_graph_partitions_[p];
 
             for (size_t i = partition_range.first; i < partition_range.second; ++i) {
-                Vertex &vertex = layer.vertices[i];
+                Vertex& vertex = layer.vertices[i];
 
                 SearchResult global_search = searchLayerForConstruction(data_[vertex.id], dmin_, level, 0);
 
@@ -475,7 +481,7 @@ void GannHNSW::mergeLocalGraphs(size_t level) {
         }
 
         // Phase 2b: Collect backward edges
-        for (const auto &vertex : layer.vertices) {
+        for (const auto& vertex : layer.vertices) {
             for (VertexId neighbor_id : vertex.neighbors) {
                 edge_list.emplace_back(neighbor_id, vertex.id);
             }
@@ -503,7 +509,7 @@ void GannHNSW::mergeLocalGraphs(size_t level) {
 /**
  * @brief CPU-optimized GatherScatter operation (replaces GPU version)
  */
-void GannHNSW::gatherScatter(std::vector<std::pair<VertexId, VertexId>> &edge_list, std::vector<size_t> &indices) {
+void GannHNSW::gatherScatter(std::vector<std::pair<VertexId, VertexId>>& edge_list, std::vector<size_t>& indices) {
     // Sort edges by target vertex for efficient grouping
     std::sort(edge_list.begin(), edge_list.end());
 
@@ -530,11 +536,11 @@ void GannHNSW::gatherScatter(std::vector<std::pair<VertexId, VertexId>> &edge_li
 /**
  * @brief CPU-optimized backward edge processing
  */
-void GannHNSW::processBackwardEdges(Layer &layer, const std::vector<std::pair<VertexId, VertexId>> &edge_list,
-                                    const std::vector<size_t> &indices) {
+void GannHNSW::processBackwardEdges(Layer& layer, const std::vector<std::pair<VertexId, VertexId>>& edge_list,
+                                    const std::vector<size_t>& indices) {
 #pragma omp parallel for
     for (size_t v = 0; v < layer.vertices.size(); ++v) {
-        Vertex &vertex = layer.vertices[v];
+        Vertex& vertex = layer.vertices[v];
         VertexId vertex_id = vertex.id;
 
         if (vertex_id >= indices.size() - 1) continue;
@@ -561,7 +567,7 @@ void GannHNSW::processBackwardEdges(Layer &layer, const std::vector<std::pair<Ve
         vertex.neighbors.reserve(dmax_);
 
         std::set<VertexId> unique_neighbors;
-        for (const auto &edge : incoming_edges) {
+        for (const auto& edge : incoming_edges) {
             if (unique_neighbors.size() >= dmax_) break;
             if (unique_neighbors.insert(edge.second).second) {
                 vertex.neighbors.push_back(edge.second);
@@ -579,14 +585,14 @@ void GannHNSW::processBackwardEdges(Layer &layer, const std::vector<std::pair<Ve
  * @param entry_point Starting vertex ID for search
  * @return SearchResult containing found neighbors
  */
-GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, size_t k, size_t ef, size_t level,
+GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float>& query, size_t k, size_t ef, size_t level,
                                              VertexId entry_point) const {
     SearchResult result;
     if (level >= layers_.size() || entry_point >= num_elements_) {
         return result;
     }
 
-    const Layer &layer = layers_[level];
+    const Layer& layer = layers_[level];
     if (layer.vertices.empty()) {
         return result;
     }
@@ -612,7 +618,7 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
     while (true) {
         // Phase 1: Candidate locating - find first unexplored vertex
         auto unexplored_it =
-            std::find_if(context.N.begin(), context.N.end(), [](const Vertex &v) { return !v.explored; });
+            std::find_if(context.N.begin(), context.N.end(), [](const Vertex& v) { return !v.explored; });
 
         if (unexplored_it == context.N.end()) {
             break;  // All vertices explored, terminate
@@ -626,7 +632,7 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
 
         // Find the exploring vertex in the layer
         auto layer_vertex_it = std::find_if(layer.vertices.begin(), layer.vertices.end(),
-                                            [exploring_vertex](const Vertex &v) { return v.id == exploring_vertex; });
+                                            [exploring_vertex](const Vertex& v) { return v.id == exploring_vertex; });
 
         if (layer_vertex_it != layer.vertices.end()) {
             // Load neighbors into T
@@ -647,9 +653,9 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
         computeDistanceParallel(query, context.T);
 
         // Phase 4: Lazy check - mark vertices already in N as explored
-        for (auto &t_vertex : context.T) {
+        for (auto& t_vertex : context.T) {
             auto found_in_n = std::find_if(context.N.begin(), context.N.end(),
-                                           [&t_vertex](const Vertex &n_vertex) { return n_vertex.id == t_vertex.id; });
+                                           [&t_vertex](const Vertex& n_vertex) { return n_vertex.id == t_vertex.id; });
 
             if (found_in_n != context.N.end()) {
                 t_vertex.explored = true;
@@ -658,7 +664,7 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
 
         // Phase 5: Sorting T by distance
         std::sort(context.T.begin(), context.T.end(),
-                  [](const Vertex &a, const Vertex &b) { return a.distance_to_query < b.distance_to_query; });
+                  [](const Vertex& a, const Vertex& b) { return a.distance_to_query < b.distance_to_query; });
 
         // Phase 6: Candidate update - merge T into N
         std::vector<Vertex> merged_candidates;
@@ -667,7 +673,7 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
         // Merge N and T
         std::merge(context.N.begin(), context.N.end(), context.T.begin(), context.T.end(),
                    std::back_inserter(merged_candidates),
-                   [](const Vertex &a, const Vertex &b) { return a.distance_to_query < b.distance_to_query; });
+                   [](const Vertex& a, const Vertex& b) { return a.distance_to_query < b.distance_to_query; });
 
         // Keep only the best ln candidates
         if (merged_candidates.size() > context.ln) {
@@ -695,12 +701,12 @@ GannHNSW::SearchResult GannHNSW::searchLayer(const std::vector<float> &query, si
  * @param query Query vector
  * @param candidates Vector of candidates to compute distances for
  */
-void GannHNSW::computeDistanceParallel(const std::vector<float> &query, std::vector<Vertex> &candidates) const {
+void GannHNSW::computeDistanceParallel(const std::vector<float>& query, std::vector<Vertex>& candidates) const {
     if (candidates.empty()) return;
 
     // Sequential computation with optimization in computeDistance()
     // For GPU, this could be replaced with a parallel kernel
-    for (auto &candidate : candidates) {
+    for (auto& candidate : candidates) {
         candidate.distance_to_query = computeDistance(query, data_[candidate.id]);
     }
 }
@@ -710,7 +716,7 @@ void GannHNSW::computeDistanceParallel(const std::vector<float> &query, std::vec
  * @param input_data 2D vector of input data points
  * @param num_threads Number of threads for parallel construction
  */
-void GannHNSW::build(const std::vector<std::vector<float>> &input_data, size_t num_threads) {
+void GannHNSW::build(const std::vector<std::vector<float>>& input_data, size_t num_threads) {
     if (input_data.empty()) {
         throw std::invalid_argument("Input data cannot be empty");
     }
@@ -798,7 +804,7 @@ void GannHNSW::build(const std::vector<std::vector<float>> &input_data, size_t n
  * @param num_threads Number of threads for parallel search
  * @return SearchResult containing neighbor IDs and distances for all queries
  */
-GannHNSW::SearchResult GannHNSW::search(const std::vector<std::vector<float>> &query_data, size_t k, size_t ef,
+GannHNSW::SearchResult GannHNSW::search(const std::vector<std::vector<float>>& query_data, size_t k, size_t ef,
                                         size_t num_threads) const {
     SearchResult final_result;
 
@@ -868,7 +874,7 @@ GannHNSW::SearchResult GannHNSW::search(const std::vector<std::vector<float>> &q
  * @param ef Search parameter
  * @return SearchResult for this single query
  */
-GannHNSW::SearchResult GannHNSW::searchQuery(const std::vector<float> &query, size_t k, size_t ef) const {
+GannHNSW::SearchResult GannHNSW::searchQuery(const std::vector<float>& query, size_t k, size_t ef) const {
     if (layers_.empty() || entry_point_ >= num_elements_) {
         return SearchResult{};
     }
@@ -890,7 +896,7 @@ GannHNSW::SearchResult GannHNSW::searchQuery(const std::vector<float> &query, si
     return searchLayer(query, k, ef, 0, current_entry);
 }
 
-void GannHNSW::save(const std::string &index_file) const {
+void GannHNSW::save(const std::string& index_file) const {
     try {
         std::ofstream os(index_file, std::ios::binary);
         if (!os.is_open()) {
@@ -899,12 +905,12 @@ void GannHNSW::save(const std::string &index_file) const {
 
         cereal::BinaryOutputArchive archive(os);
         archive(*this);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         throw std::runtime_error("Failed to save index: " + std::string(e.what()));
     }
 }
 
-bool GannHNSW::load(const std::string &index_file) {
+bool GannHNSW::load(const std::string& index_file) {
     try {
         std::ifstream is(index_file, std::ios::binary);
         if (!is.is_open()) {
@@ -919,7 +925,7 @@ bool GannHNSW::load(const std::string &index_file) {
         level_distribution_ = std::uniform_real_distribution<double>(0.0, 1.0);
 
         return true;
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         return false;
     }
 }

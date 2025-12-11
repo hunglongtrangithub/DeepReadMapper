@@ -1,9 +1,11 @@
+#include <fstream>
+
+#include "cnpy.h"
 #include "parse_inputs.hpp"
 #include "utils.hpp"
 #include "vectorize.hpp"
-
 // Helper function to write .npy header
-void write_npy_header(std::ofstream &file, size_t rows, size_t cols) {
+void write_npy_header(std::ofstream& file, size_t rows, size_t cols) {
     // Magic string
     file.write("\x93NUMPY", 6);
 
@@ -26,13 +28,13 @@ void write_npy_header(std::ofstream &file, size_t rows, size_t cols) {
 
     // Write header length (little-endian uint16)
     uint16_t header_len = static_cast<uint16_t>(header_str.size());
-    file.write(reinterpret_cast<const char *>(&header_len), 2);
+    file.write(reinterpret_cast<const char*>(&header_len), 2);
 
     // Write header dict
     file.write(header_str.c_str(), header_str.size());
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc < 3 || argc > 5) {
         std::cerr << "Usage: " << argv[0] << " <sequences.txt> <ref_len> [output.npy] [batch_size]" << std::endl;
         std::cerr << "  - batch_size: Number of sequences to process at once (default: 100000)" << std::endl;
@@ -76,7 +78,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        const char *data = static_cast<const char *>(mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+        const char* data = static_cast<const char*>(mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
 
         if (data == MAP_FAILED) {
             close(fd);
@@ -89,12 +91,12 @@ int main(int argc, char *argv[]) {
 
         // Estimate genome length and calculate accurate batch count
         std::cout << "\n[INFO] Analyzing genome..." << std::endl;
-        const char *seq_start = data;
+        const char* seq_start = data;
         while (seq_start < data + data_size && *seq_start != '\n') seq_start++;
         if (seq_start < data + data_size) seq_start++;
 
         size_t genome_length = 0;
-        for (const char *ptr = seq_start; ptr < data + data_size; ++ptr) {
+        for (const char* ptr = seq_start; ptr < data + data_size; ++ptr) {
             char c = *ptr;
             if (std::isspace(c)) continue;
             c = std::toupper(static_cast<unsigned char>(c));
@@ -134,7 +136,7 @@ int main(int argc, char *argv[]) {
         std::ofstream npy_file(output_file, std::ios::binary);
         if (!npy_file) {
             std::cerr << "Failed to open output file: " << output_file << std::endl;
-            munmap(const_cast<char *>(data), data_size);
+            munmap(const_cast<char*>(data), data_size);
             close(fd);
             return 1;
         }
@@ -188,8 +190,8 @@ int main(int argc, char *argv[]) {
 
             // Write this batch's embeddings directly to file
             std::cout << "[BATCH] Writing " << batch_embeddings.size() << " embeddings to file..." << std::endl;
-            for (const auto &emb : batch_embeddings) {
-                npy_file.write(reinterpret_cast<const char *>(emb.data()), emb.size() * sizeof(float));
+            for (const auto& emb : batch_embeddings) {
+                npy_file.write(reinterpret_cast<const char*>(emb.data()), emb.size() * sizeof(float));
             }
 
             total_sequences += batch_sequences.size();
@@ -208,7 +210,7 @@ int main(int argc, char *argv[]) {
         npy_file.close();
 
         // Cleanup
-        munmap(const_cast<char *>(data), data_size);
+        munmap(const_cast<char*>(data), data_size);
         close(fd);
 
         auto total_end = std::chrono::high_resolution_clock::now();
@@ -242,7 +244,7 @@ int main(int argc, char *argv[]) {
             std::vector<float> flattened_embeddings;
             flattened_embeddings.reserve(num_sequences * embedding_dim);
 
-            for (const auto &embedding : all_embeddings) {
+            for (const auto& embedding : all_embeddings) {
                 flattened_embeddings.insert(flattened_embeddings.end(), embedding.begin(), embedding.end());
             }
 

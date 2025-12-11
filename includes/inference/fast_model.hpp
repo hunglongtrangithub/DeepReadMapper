@@ -2,13 +2,9 @@
 
 #include <cstring>
 #include <future>
-#include <iostream>
-#include <memory>
 #include <openvino/openvino.hpp>
 #include <string>
 #include <vector>
-
-#include "config.hpp"
 
 /// @brief FastModel class for handling OpenVINO model inference.
 class FastModel {
@@ -34,7 +30,7 @@ class FastModel {
      * @param model_path The path to the OpenVINO model XML file.
      * Defaults to "model/finetuned_sgn33-new-a-Apr6.xml".
      */
-    FastModel(const std::string &model_path = "model/finetuned_sgn33-new-a-Apr6.xml");
+    FastModel(const std::string& model_path = "model/finetuned_sgn33-new-a-Apr6.xml");
 
     /**
      * @brief Performs synchronous inference on the model.
@@ -42,7 +38,7 @@ class FastModel {
      * @param input_shape A vector representing the shape of the input data.
      * @return A vector of float representing the inference results.
      */
-    std::vector<float> operator()(const std::vector<int64_t> &input_data, const std::vector<size_t> &input_shape);
+    std::vector<float> operator()(const std::vector<int64_t>& input_data, const std::vector<size_t>& input_shape);
 
     /**
      * @brief Performs asynchronous inference on the model.
@@ -50,8 +46,8 @@ class FastModel {
      * @param input_shape A vector representing the shape of the input data.
      * @return A future object that will eventually hold the inference results.
      */
-    std::future<std::vector<float>> inferAsync(const std::vector<int64_t> &input_data,
-                                               const std::vector<size_t> &input_shape);
+    std::future<std::vector<float>> inferAsync(const std::vector<int64_t>& input_data,
+                                               const std::vector<size_t>& input_shape);
 
     /**
      * @brief Performs asynchronous inference for a batch of requests.
@@ -59,8 +55,8 @@ class FastModel {
      * @param batch_shape An input shape vectors for each request in the batch.
      * @return A vector of future objects, each holding the inference results for a single request.
      */
-    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<std::vector<int64_t>> &batch_inputs,
-                                                                 const std::vector<size_t> &batch_shape);
+    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<std::vector<int64_t>>& batch_inputs,
+                                                                 const std::vector<size_t>& batch_shape);
 
     /**
      * @brief Performs asynchronous inference for a batch of requests using pointers.
@@ -69,6 +65,6 @@ class FastModel {
      * @return A vector of future objects, each holding the inference results for a single request
      */
 
-    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<const int64_t *> &batch_ptrs,
-                                                                 const std::vector<size_t> &batch_shape);
+    std::vector<std::future<std::vector<float>>> inferBatchAsync(const std::vector<const int64_t*>& batch_ptrs,
+                                                                 const std::vector<size_t>& batch_shape);
 };

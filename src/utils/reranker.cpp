@@ -1,7 +1,9 @@
 #include "reranker.hpp"
 
+#include "metrics.hpp"
+
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> sw_reranker(
-    const std::vector<std::string> &cand_seqs, const std::vector<size_t> &cand_ids, const std::string &query_seq,
+    const std::vector<std::string>& cand_seqs, const std::vector<size_t>& cand_ids, const std::string& query_seq,
     size_t k) {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0) return {{}, {}, {}};
@@ -43,9 +45,9 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> sw_r
     return {top_seqs, top_scores, top_ids};
 }
 
-std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::vector<std::string> &cand_seqs,
-                                                                    const std::vector<float> &query_embedding, size_t k,
-                                                                    Vectorizer &vectorizer) {
+std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::vector<std::string>& cand_seqs,
+                                                                    const std::vector<float>& query_embedding, size_t k,
+                                                                    Vectorizer& vectorizer) {
     size_t num_cands = cand_seqs.size();
     if (num_cands == 0 || k == 0) return {{}, {}};
 
@@ -53,7 +55,7 @@ std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::v
     std::vector<std::vector<float>> cand_embeddings = vectorizer.vectorize(cand_seqs, false);
     std::vector<float> l2_dists;
     l2_dists.reserve(num_cands);
-    for (const auto &cand_emb : cand_embeddings) {
+    for (const auto& cand_emb : cand_embeddings) {
         float dist = calc_l2_dist(cand_emb, query_embedding);
         l2_dists.push_back(dist);
     }
@@ -86,9 +88,9 @@ std::pair<std::vector<std::string>, std::vector<float>> l2_reranker(const std::v
 }
 
 std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>> batch_reranker(
-    const std::vector<std::string> &cand_seqs, const std::vector<size_t> &dense_ids,
-    const std::vector<size_t> &cand_embedding_ids, const std::vector<std::vector<float>> &cand_embeddings,
-    const std::vector<size_t> &query_start_ids, const std::vector<std::vector<float>> &query_embeddings, size_t k) {
+    const std::vector<std::string>& cand_seqs, const std::vector<size_t>& dense_ids,
+    const std::vector<size_t>& cand_embedding_ids, const std::vector<std::vector<float>>& cand_embeddings,
+    const std::vector<size_t>& query_start_ids, const std::vector<std::vector<float>>& query_embeddings, size_t k) {
     // Progress tracking
     std::atomic<size_t> completed_queries{0};
     const size_t total_queries = query_embeddings.size();
@@ -127,7 +129,7 @@ std::vector<std::tuple<std::vector<std::string>, std::vector<float>, std::vector
 
         for (size_t i = start_idx; i < end_idx; ++i) {
             size_t emb_idx = cand_embedding_ids[i];
-            const auto &cand_emb = cand_embeddings[emb_idx];
+            const auto& cand_emb = cand_embeddings[emb_idx];
             float dist = calc_l2_dist(cand_emb, query_embeddings[q]);
             l2_dists.push_back(dist);
         }

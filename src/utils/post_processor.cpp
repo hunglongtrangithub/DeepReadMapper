@@ -1,7 +1,11 @@
 #include "post_processor.hpp"
 
+#include "parse_inputs.hpp"
+#include "reranker.hpp"
+#include "utils.hpp"
+
 //! Only use for special HNSW index with encoded labels. Ignore if using default sequential labels.
-PositionInfo position_decode(size_t label, const std::vector<size_t> &mapping) {
+PositionInfo position_decode(size_t label, const std::vector<size_t>& mapping) {
     // First, check if label exists in mapping
     if (label >= mapping.size() || label < 0) {
         throw std::out_of_range("Label " + std::to_string(label) + " out of range for mapping of size " +
@@ -21,7 +25,7 @@ PositionInfo position_decode(size_t label, const std::vector<size_t> &mapping) {
 // Template function to reformat hnsw output
 template <typename NeighborType>
 std::pair<std::vector<size_t>, std::vector<float>> reformat_output(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
     size_t k) {
     size_t n_rows = neighbors.size();
 
@@ -39,7 +43,7 @@ std::pair<std::vector<size_t>, std::vector<float>> reformat_output(
     return {host_indices, host_distances};
 }
 
-std::string find_sequence(const std::string &ref_genome, size_t id, size_t ref_len) {
+std::string find_sequence(const std::string& ref_genome, size_t id, size_t ref_len) {
     // 1 position creates 2 windows (forward and reverse complement)
     size_t genomic_pos = id / 2;
     int is_reverse = (id % 2 == 1);
@@ -57,11 +61,11 @@ std::string find_sequence(const std::string &ref_genome, size_t id, size_t ref_l
     return window;
 }
 
-std::string find_sequence_static(const std::vector<std::string> &ref_seqs, size_t id) { return ref_seqs[id]; }
+std::string find_sequence_static(const std::vector<std::string>& ref_seqs, size_t id) { return ref_seqs[id]; }
 
 // Dynamic lookup version - returns sequences, their dense IDs, and mapping indices to the unique pool
 std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
-    const std::string &ref_genome, const std::vector<size_t> &sparse_ids, size_t ref_len, size_t stride) {
+    const std::string& ref_genome, const std::vector<size_t>& sparse_ids, size_t ref_len, size_t stride) {
     if (sparse_ids.empty()) {
         return {{}, {}, {}};
     }
@@ -176,7 +180,7 @@ std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> f
 
 // Static lookup version - returns sequences, their dense IDs, and mapping indices to the unique pool
 std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> find_sequences(
-    const std::vector<std::string> &ref_seqs, const std::vector<size_t> &sparse_ids, size_t stride) {
+    const std::vector<std::string>& ref_seqs, const std::vector<size_t>& sparse_ids, size_t stride) {
     if (sparse_ids.empty()) {
         return {{}, {}, {}};
     }
@@ -295,7 +299,7 @@ std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> f
 
 // Helper function to convert neighbor types to size_t
 template <typename NeighborType>
-std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector<NeighborType>> &neighbors) {
+std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector<NeighborType>>& neighbors) {
     if constexpr (std::is_same_v<NeighborType, size_t>) {
         return neighbors;
     } else {
@@ -309,8 +313,8 @@ std::vector<std::vector<size_t>> convert_neighbors(const std::vector<std::vector
 
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::string &ref_genome, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::string& ref_genome, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride, size_t k,
     size_t k_clusters) {
     std::cout << "[POST-PROCESS] Using dynamic lookup & SW reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
@@ -398,8 +402,8 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride,
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::vector<std::string>& ref_seqs, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride,
     size_t k, size_t k_clusters) {
     std::cout << "[POST-PROCESS] Using static lookup & SW reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
@@ -487,9 +491,9 @@ std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post
 // L2 distance version with dynamic lookup (templated)
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::string &ref_genome, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride, size_t k,
-    const std::vector<std::vector<float>> &query_embeddings, Vectorizer &vectorizer, size_t k_clusters) {
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::string& ref_genome, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride, size_t k,
+    const std::vector<std::vector<float>>& query_embeddings, Vectorizer& vectorizer, size_t k_clusters) {
     std::cout << "[POST-PROCESS] Using dynamic lookup & batched reranker" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
@@ -644,7 +648,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     final_scores.reserve(total_queries * k);
     final_ids.reserve(total_queries * k);
 
-    for (const auto &[seqs, scores, ids] : batch_results) {
+    for (const auto& [seqs, scores, ids] : batch_results) {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());
         final_ids.insert(final_ids.end(), ids.begin(), ids.end());
@@ -659,13 +663,13 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 
 // L2 distance version with dynamic lookup with streaming output (templated)
 template <typename NeighborType>
-void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborType>> &neighbors,
-                                       const std::vector<std::vector<float>> &distances, const std::string &ref_genome,
-                                       const std::vector<std::string> &query_seqs,
-                                       const std::vector<std::string> &query_ids, size_t ref_len, size_t stride,
-                                       size_t k, const std::vector<std::vector<float>> &query_embeddings,
-                                       Vectorizer &vectorizer, size_t k_clusters, const std::string &sam_file,
-                                       const std::string &ref_name) {
+void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborType>>& neighbors,
+                                       const std::vector<std::vector<float>>& distances, const std::string& ref_genome,
+                                       const std::vector<std::string>& query_seqs,
+                                       const std::vector<std::string>& query_ids, size_t ref_len, size_t stride,
+                                       size_t k, const std::vector<std::vector<float>>& query_embeddings,
+                                       Vectorizer& vectorizer, size_t k_clusters, const std::string& sam_file,
+                                       const std::string& ref_name) {
     std::cout << "[POST-PROCESS] Using dynamic lookup & batched reranker with STREAMING output" << std::endl;
     std::cout << "[POST-PROCESS] Configs:" << std::endl;
     std::cout << "[POST-PROCESS] Metrics: L2 distance" << std::endl;
@@ -870,7 +874,7 @@ void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborTyp
         std::vector<float> result_scores;
         std::vector<size_t> result_ids;
 
-        for (const auto &[seqs, scores, ids] : batch_results) {
+        for (const auto& [seqs, scores, ids] : batch_results) {
             result_seqs.insert(result_seqs.end(), seqs.begin(), seqs.end());
             result_scores.insert(result_scores.end(), scores.begin(), scores.end());
             result_ids.insert(result_ids.end(), ids.begin(), ids.end());
@@ -898,22 +902,22 @@ void post_process_l2_dynamic_streaming(const std::vector<std::vector<NeighborTyp
 
 template <typename NeighborType>
 std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static(
-    const std::vector<std::vector<NeighborType>> &neighbors, const std::vector<std::vector<float>> &distances,
-    const std::vector<std::string> &ref_seqs, const std::vector<std::string> &query_seqs, size_t ref_len, size_t stride,
-    size_t k, const std::vector<std::vector<float>> &query_embeddings, Vectorizer &vectorizer, size_t k_clusters) {
+    const std::vector<std::vector<NeighborType>>& neighbors, const std::vector<std::vector<float>>& distances,
+    const std::vector<std::string>& ref_seqs, const std::vector<std::string>& query_seqs, size_t ref_len, size_t stride,
+    size_t k, const std::vector<std::vector<float>>& query_embeddings, Vectorizer& vectorizer, size_t k_clusters) {
     auto start_time = std::chrono::high_resolution_clock::now();
     std::cout << "[POST-PROCESS] Starting post-processing with L2 reranker (static lookup)" << std::endl;
 
     // Step 1: Collect all neighbor IDs
     std::vector<size_t> all_neighbor_ids;
     size_t total_neighbors = 0;
-    for (const auto &neighbor_vec : neighbors) {
+    for (const auto& neighbor_vec : neighbors) {
         total_neighbors += neighbor_vec.size();
     }
     all_neighbor_ids.reserve(total_neighbors);
 
-    for (const auto &neighbor_vec : neighbors) {
-        for (const auto &neighbor : neighbor_vec) {
+    for (const auto& neighbor_vec : neighbors) {
+        for (const auto& neighbor : neighbor_vec) {
             all_neighbor_ids.push_back(static_cast<size_t>(neighbor));
         }
     }
@@ -934,7 +938,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     std::vector<size_t> query_start_indices;
     query_start_indices.reserve(neighbors.size() + 1);
     size_t cumulative = 0;
-    for (const auto &neighbor_vec : neighbors) {
+    for (const auto& neighbor_vec : neighbors) {
         query_start_indices.push_back(cumulative);
         cumulative += neighbor_vec.size() * (stride > 1 ? stride : 1);
     }
@@ -1006,7 +1010,7 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
     final_scores.reserve(results.size() * k);
     final_ids.reserve(results.size() * k);
 
-    for (const auto &[seqs, scores, ids] : results) {
+    for (const auto& [seqs, scores, ids] : results) {
         final_seqs.insert(final_seqs.end(), seqs.begin(), seqs.end());
         final_scores.insert(final_scores.end(), scores.begin(), scores.end());
         final_ids.insert(final_ids.end(), ids.begin(), ids.end());
@@ -1022,56 +1026,56 @@ std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> po
 // Explicit template instantiations for different neighbor types
 // Reformat output for different neighbor types
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<size_t>(
-    const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, size_t);
+    const std::vector<std::vector<size_t>>&, const std::vector<std::vector<float>>&, size_t);
 template std::pair<std::vector<size_t>, std::vector<float>> reformat_output<long int>(
-    const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, size_t);
+    const std::vector<std::vector<long int>>&, const std::vector<std::vector<float>>&, size_t);
 
 // Post-processing with Smith-Waterman reranker & dynamic lookup
 template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic<size_t>(
-    const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &,
-    const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+    const std::vector<std::vector<size_t>>&, const std::vector<std::vector<float>>&, const std::string&,
+    const std::vector<std::string>&, size_t, size_t, size_t, size_t);
 template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_dynamic<long int>(
-    const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &, const std::string &,
-    const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+    const std::vector<std::vector<long int>>&, const std::vector<std::vector<float>>&, const std::string&,
+    const std::vector<std::string>&, size_t, size_t, size_t, size_t);
 
 // Post-processing with Smith-Waterman reranker & static lookup
 template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static<size_t>(
-    const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &,
-    const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+    const std::vector<std::vector<size_t>>&, const std::vector<std::vector<float>>&, const std::vector<std::string>&,
+    const std::vector<std::string>&, size_t, size_t, size_t, size_t);
 template std::tuple<std::vector<std::string>, std::vector<int>, std::vector<size_t>> post_process_sw_static<long int>(
-    const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &,
-    const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t, size_t);
+    const std::vector<std::vector<long int>>&, const std::vector<std::vector<float>>&, const std::vector<std::string>&,
+    const std::vector<std::string>&, size_t, size_t, size_t, size_t);
 
 // Post-processing with L2 reranker & dynamic lookup
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_dynamic<size_t>(
-    const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::string &,
-    const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &,
+    const std::vector<std::vector<size_t>>&, const std::vector<std::vector<float>>&, const std::string&,
+    const std::vector<std::string>&, size_t, size_t, size_t, const std::vector<std::vector<float>>&, Vectorizer&,
     size_t);
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>>
-post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &,
-                                  const std::string &, const std::vector<std::string> &, size_t, size_t, size_t,
-                                  const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+post_process_l2_dynamic<long int>(const std::vector<std::vector<long int>>&, const std::vector<std::vector<float>>&,
+                                  const std::string&, const std::vector<std::string>&, size_t, size_t, size_t,
+                                  const std::vector<std::vector<float>>&, Vectorizer&, size_t);
 
 // Post-processing with L2 reranker & dynamic lookup with streaming output
-template void post_process_l2_dynamic_streaming<size_t>(const std::vector<std::vector<size_t>> &,
-                                                        const std::vector<std::vector<float>> &, const std::string &,
-                                                        const std::vector<std::string> &,
-                                                        const std::vector<std::string> &, size_t, size_t, size_t,
-                                                        const std::vector<std::vector<float>> &, Vectorizer &, size_t,
-                                                        const std::string &, const std::string &);
-template void post_process_l2_dynamic_streaming<long int>(const std::vector<std::vector<long int>> &,
-                                                          const std::vector<std::vector<float>> &, const std::string &,
-                                                          const std::vector<std::string> &,
-                                                          const std::vector<std::string> &, size_t, size_t, size_t,
-                                                          const std::vector<std::vector<float>> &, Vectorizer &, size_t,
-                                                          const std::string &, const std::string &);
+template void post_process_l2_dynamic_streaming<size_t>(const std::vector<std::vector<size_t>>&,
+                                                        const std::vector<std::vector<float>>&, const std::string&,
+                                                        const std::vector<std::string>&,
+                                                        const std::vector<std::string>&, size_t, size_t, size_t,
+                                                        const std::vector<std::vector<float>>&, Vectorizer&, size_t,
+                                                        const std::string&, const std::string&);
+template void post_process_l2_dynamic_streaming<long int>(const std::vector<std::vector<long int>>&,
+                                                          const std::vector<std::vector<float>>&, const std::string&,
+                                                          const std::vector<std::string>&,
+                                                          const std::vector<std::string>&, size_t, size_t, size_t,
+                                                          const std::vector<std::vector<float>>&, Vectorizer&, size_t,
+                                                          const std::string&, const std::string&);
 
 // Post-processing with L2 reranker & static lookup
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static<size_t>(
-    const std::vector<std::vector<size_t>> &, const std::vector<std::vector<float>> &, const std::vector<std::string> &,
-    const std::vector<std::string> &, size_t, size_t, size_t, const std::vector<std::vector<float>> &, Vectorizer &,
+    const std::vector<std::vector<size_t>>&, const std::vector<std::vector<float>>&, const std::vector<std::string>&,
+    const std::vector<std::string>&, size_t, size_t, size_t, const std::vector<std::vector<float>>&, Vectorizer&,
     size_t);
 template std::tuple<std::vector<std::string>, std::vector<float>, std::vector<size_t>> post_process_l2_static<long int>(
-    const std::vector<std::vector<long int>> &, const std::vector<std::vector<float>> &,
-    const std::vector<std::string> &, const std::vector<std::string> &, size_t, size_t, size_t,
-    const std::vector<std::vector<float>> &, Vectorizer &, size_t);
+    const std::vector<std::vector<long int>>&, const std::vector<std::vector<float>>&, const std::vector<std::string>&,
+    const std::vector<std::string>&, size_t, size_t, size_t, const std::vector<std::vector<float>>&, Vectorizer&,
+    size_t);

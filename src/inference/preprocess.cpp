@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <string>
 
+#include "tok2index.hpp"
+
 Preprocessor::Preprocessor() {
     uint8_t i = 0;
-    for (auto &[token, index] : _Tok2Index) {
+    for (auto& [token, index] : _Tok2Index) {
         if (hashToken(token[0], token[1], token[2]) != i) {
             throw std::runtime_error("Tokens are sorted incorrecly or are not fully defined");
         }
@@ -15,7 +17,7 @@ Preprocessor::Preprocessor() {
     }
 }
 
-std::vector<uint16_t> Preprocessor::preprocess(const std::string &seq, unsigned maxLen) {
+std::vector<uint16_t> Preprocessor::preprocess(const std::string& seq, unsigned maxLen) {
     unsigned len = std::min(maxLen, static_cast<unsigned int>(seq.size()));
     std::vector<uint16_t> result(len);
 
@@ -37,7 +39,7 @@ std::vector<uint16_t> Preprocessor::preprocess(const std::string &seq, unsigned 
     return result;
 }
 
-std::vector<std::vector<uint16_t>> Preprocessor::preprocessBatch(const std::vector<std::string> &seqs, unsigned maxLen,
+std::vector<std::vector<uint16_t>> Preprocessor::preprocessBatch(const std::vector<std::string>& seqs, unsigned maxLen,
                                                                  bool verbose) {
     std::vector<std::vector<uint16_t>> result(seqs.size());
 

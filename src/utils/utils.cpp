@@ -1,12 +1,16 @@
 #include "utils.hpp"
 
+#include <filesystem>
+#include <fstream>
+
+#include "cnpy.h"
 #include "parse_inputs.hpp"
 #include "progressbar.h"
 
 /// @brief Read input sequences from a plain text file (one sequence per line).
 /// @param file_path Path to the input file.
 /// @return Vector of input sequences as strings.
-std::vector<std::string> read_txt_default(const std::string &file_path) {
+std::vector<std::string> read_txt_default(const std::string& file_path) {
     std::cout << "Reading sequences from: " << file_path << std::endl;
 
     // Get file size for progress and pre-allocation
@@ -39,15 +43,15 @@ std::vector<std::string> read_txt_default(const std::string &file_path) {
         indicators::option::ShowElapsedTime{true}, indicators::option::ShowRemainingTime{true}};
 
     // Parse buffer in chunks
-    const char *start = buffer.get();
-    const char *end = start + file_size;
-    const char *current = start;
+    const char* start = buffer.get();
+    const char* end = start + file_size;
+    const char* current = start;
     size_t bytes_processed = 0;
     size_t last_progress_update = 0;
 
     while (current < end) {
         // Find end of line
-        const char *line_end = current;
+        const char* line_end = current;
         while (line_end < end && *line_end != '\n' && *line_end != '\r') {
             line_end++;
         }
@@ -82,7 +86,7 @@ std::vector<std::string> read_txt_default(const std::string &file_path) {
 /// @brief Read input sequences using memory mapping (Linux only).
 /// @param file_path Path to the input file.
 /// @return Vector of input sequences as strings.
-std::vector<std::string> read_txt_mmap(const std::string &file_path) {
+std::vector<std::string> read_txt_mmap(const std::string& file_path) {
     std::cout << "Reading sequences from: " << file_path << " (using mmap)" << std::endl;
 
     // Open file
@@ -100,7 +104,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path) {
     size_t file_size = file_stat.st_size;
 
     // Memory map the file
-    const char *data = static_cast<const char *>(mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0));
+    const char* data = static_cast<const char*>(mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0));
     if (data == MAP_FAILED) {
         close(fd);
         throw std::runtime_error("Could not mmap file: " + file_path);
@@ -117,13 +121,13 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path) {
         indicators::option::ShowElapsedTime{true}, indicators::option::ShowRemainingTime{true}};
 
     // Parse memory-mapped data
-    const char *current = data;
-    const char *end = data + file_size;
+    const char* current = data;
+    const char* end = data + file_size;
     size_t bytes_processed = 0;
     size_t last_progress_update = 0;
 
     while (current < end) {
-        const char *line_start = current;
+        const char* line_start = current;
 
         // Find end of line
         while (current < end && *current != '\n' && *current != '\r') {
@@ -152,7 +156,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path) {
     indicators::show_console_cursor(true);
 
     // Cleanup
-    munmap(const_cast<char *>(data), file_size);
+    munmap(const_cast<char*>(data), file_size);
     close(fd);
     std::cout << "Successfully read " << sequences.size() << " sequences" << std::endl;
     return sequences;
@@ -164,7 +168,7 @@ std::vector<std::string> read_txt_mmap(const std::string &file_path) {
 /// @param stride Length of non-overlap part between 2 windows (for FASTA only, default: 1)
 /// @param lookup_mode If true, do not add PREFIX/POSTFIX to sequences (for FASTA only, default: false)
 /// @return Pair of (sequences, query IDs). For FASTA/TXT returns empty IDs, for FASTQ returns actual IDs
-std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const std::string &file_path, size_t ref_len,
+std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const std::string& file_path, size_t ref_len,
                                                                         size_t stride, bool lookup_mode) {
     std::string file_ext = std::filesystem::path(file_path).extension().string();
     if (file_ext != ".fna" && file_ext != ".fasta" && file_ext != ".fa" && file_ext != ".fastq" && file_ext != ".fq" &&
@@ -192,14 +196,14 @@ std::pair<std::vector<std::string>, std::vector<std::string>> read_file(const st
 
 /// @brief Analyze input sequences and print statistics.
 /// @param sequences Vector of input sequences as strings.
-void analyze_input(const std::vector<std::string> &sequences) {
+void analyze_input(const std::vector<std::string>& sequences) {
     if (sequences.empty()) return;
 
     size_t min_len = sequences[0].length();
     size_t max_len = sequences[0].length();
     size_t total_len = 0;
 
-    for (const auto &seq : sequences) {
+    for (const auto& seq : sequences) {
         size_t len = seq.length();
         min_len = std::min(min_len, len);
         max_len = std::max(max_len, len);
@@ -232,8 +236,8 @@ void analyze_input(const std::vector<std::string> &sequences) {
 /// @return 0 if successful.
 //! Note, this function is deprecated as we return SAM instead of bin/npy files
 
-int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::vector<std::vector<float>> &distances,
-                 const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy) {
+int save_results(const std::vector<std::vector<size_t>>& neighbors, const std::vector<std::vector<float>>& distances,
+                 const std::string& indices_file, const std::string& distances_file, size_t k, const bool use_npy) {
     if (use_npy) {
         // Save results in NumPy format for Python compatibility
         size_t n_rows = neighbors.size();
@@ -267,7 +271,7 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
     }
 
     for (size_t i = 0; i < n_rows; ++i) {
-        indices_out.write(reinterpret_cast<const char *>(neighbors[i].data()), k * sizeof(size_t));
+        indices_out.write(reinterpret_cast<const char*>(neighbors[i].data()), k * sizeof(size_t));
     }
     indices_out.close();
 
@@ -278,7 +282,7 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
     }
 
     for (size_t i = 0; i < n_rows; ++i) {
-        distances_out.write(reinterpret_cast<const char *>(distances[i].data()), k * sizeof(float));
+        distances_out.write(reinterpret_cast<const char*>(distances[i].data()), k * sizeof(float));
     }
     distances_out.close();
 
@@ -286,8 +290,8 @@ int save_results(const std::vector<std::vector<size_t>> &neighbors, const std::v
 }
 
 //! This function is deprecated as we return SAM instead of bin/npy files
-int save_results(const std::vector<std::vector<long int>> &neighbors, const std::vector<std::vector<float>> &distances,
-                 const std::string &indices_file, const std::string &distances_file, size_t k, const bool use_npy) {
+int save_results(const std::vector<std::vector<long int>>& neighbors, const std::vector<std::vector<float>>& distances,
+                 const std::string& indices_file, const std::string& distances_file, size_t k, const bool use_npy) {
     // Convert long int to size_t
     std::vector<std::vector<size_t>> neighbors_size_t(neighbors.size());
     for (size_t i = 0; i < neighbors.size(); ++i) {
@@ -298,11 +302,11 @@ int save_results(const std::vector<std::vector<long int>> &neighbors, const std:
     return save_results(neighbors_size_t, distances, indices_file, distances_file, k, use_npy);
 }
 
-void write_sam(const std::vector<std::string> &final_seqs, const std::vector<float> &final_scores,
-               const std::vector<std::string> &query_seqs,
-               const std::vector<std::string> &query_ids,  // Query IDs from FASTQ headers
-               const std::vector<size_t> &sequence_ids,    // Dense sequences ID, pairwise with final_seqs/final_scores
-               const std::string &ref_name, const int ref_len, size_t k, const std::string &output_file) {
+void write_sam(const std::vector<std::string>& final_seqs, const std::vector<float>& final_scores,
+               const std::vector<std::string>& query_seqs,
+               const std::vector<std::string>& query_ids,  // Query IDs from FASTQ headers
+               const std::vector<size_t>& sequence_ids,    // Dense sequences ID, pairwise with final_seqs/final_scores
+               const std::string& ref_name, const int ref_len, size_t k, const std::string& output_file) {
     std::ofstream sam_file(output_file);
 
     // Write SAM header
@@ -361,10 +365,10 @@ void write_sam(const std::vector<std::string> &final_seqs, const std::vector<flo
     sam_file.close();
 }
 
-void write_sam_streaming(const std::vector<std::string> &cand_seqs, const std::vector<float> &scores,
-                         const std::vector<std::string> &query_seqs, const std::vector<std::string> &query_ids,
-                         const std::vector<size_t> &cand_ids, const std::string &ref_name, size_t ref_len, size_t k,
-                         const std::string &sam_file, size_t query_offset, bool write_header,
+void write_sam_streaming(const std::vector<std::string>& cand_seqs, const std::vector<float>& scores,
+                         const std::vector<std::string>& query_seqs, const std::vector<std::string>& query_ids,
+                         const std::vector<size_t>& cand_ids, const std::string& ref_name, size_t ref_len, size_t k,
+                         const std::string& sam_file, size_t query_offset, bool write_header,
                          size_t batch_query_count) {
     std::ofstream outfile;
 
@@ -443,8 +447,8 @@ void write_sam_streaming(const std::vector<std::string> &cand_seqs, const std::v
     outfile.close();
 }
 
-int save_config(const std::unordered_map<std::string, ConfigValue> &config, const std::string &folder_path,
-                const std::string &config_file) {
+int save_config(const std::unordered_map<std::string, ConfigValue>& config, const std::string& folder_path,
+                const std::string& config_file) {
     std::filesystem::create_directories(folder_path);
 
     std::string config_path = folder_path + "/" + config_file;
@@ -454,7 +458,7 @@ int save_config(const std::unordered_map<std::string, ConfigValue> &config, cons
         throw std::runtime_error("Could not create config file: " + config_file);
     }
 
-    for (const auto &pair : config) {
+    for (const auto& pair : config) {
         out << pair.first << ": ";
         if (std::holds_alternative<size_t>(pair.second)) {
             out << std::get<size_t>(pair.second);
@@ -470,7 +474,7 @@ int save_config(const std::unordered_map<std::string, ConfigValue> &config, cons
     return 0;
 }
 
-std::unordered_map<std::string, ConfigValue> load_config(const std::string &config_file) {
+std::unordered_map<std::string, ConfigValue> load_config(const std::string& config_file) {
     std::ifstream in(config_file);
     if (!in) {
         throw std::runtime_error("Could not open config file: " + config_file);
@@ -518,7 +522,7 @@ std::unordered_map<std::string, ConfigValue> load_config(const std::string &conf
     return config;
 }
 
-int save_id_map(const std::vector<size_t> &labels, const std::string &folder_path, const std::string &mapping_file) {
+int save_id_map(const std::vector<size_t>& labels, const std::string& folder_path, const std::string& mapping_file) {
     std::filesystem::create_directories(folder_path);
 
     std::string mapping_path = folder_path + "/" + mapping_file;
@@ -528,12 +532,12 @@ int save_id_map(const std::vector<size_t> &labels, const std::string &folder_pat
         throw std::runtime_error("Could not create mapping file: " + mapping_file);
     }
 
-    mapping.write(reinterpret_cast<const char *>(labels.data()), labels.size() * sizeof(size_t));
+    mapping.write(reinterpret_cast<const char*>(labels.data()), labels.size() * sizeof(size_t));
     mapping.close();
     return 0;
 }
 
-std::vector<size_t> load_id_map(const std::string &mapping_file) {
+std::vector<size_t> load_id_map(const std::string& mapping_file) {
     std::ifstream mapping(mapping_file, std::ios::binary);
     if (!mapping) {
         throw std::runtime_error("Could not open mapping file: " + mapping_file);
@@ -551,7 +555,7 @@ std::vector<size_t> load_id_map(const std::string &mapping_file) {
     size_t num_labels = file_size / sizeof(size_t);
     std::vector<size_t> labels(num_labels);
 
-    mapping.read(reinterpret_cast<char *>(labels.data()), file_size);
+    mapping.read(reinterpret_cast<char*>(labels.data()), file_size);
     mapping.close();
     return labels;
 }

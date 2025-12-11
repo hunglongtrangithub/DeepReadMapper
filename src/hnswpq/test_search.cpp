@@ -2,8 +2,10 @@
 
 #include "cnpy.h"
 #include "hnswpq/search.hpp"
+#include "utils.hpp"
+#include "vectorize.hpp"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k>" << std::endl;
         return 1;
@@ -36,7 +38,7 @@ int main(int argc, char *argv[]) {
         std::cout << "[MAIN] Loaded " << num_queries << " embeddings of dimension " << embedding_dim << std::endl;
 
         // Convert to vector<vector<float>>
-        float *data = arr.data<float>();
+        float* data = arr.data<float>();
         embeddings.resize(num_queries);
         for (size_t i = 0; i < num_queries; ++i) {
             embeddings[i].resize(embedding_dim);
@@ -58,8 +60,8 @@ int main(int argc, char *argv[]) {
 
     // Load FAISS IndexHNSWPQ
     std::cout << "[MAIN] Loading FAISS IndexHNSWPQ from " << index_file << "..." << std::endl;
-    faiss::Index *loaded_index = faiss::read_index(index_file.c_str());
-    faiss::IndexHNSWPQ *index = dynamic_cast<faiss::IndexHNSWPQ *>(loaded_index);
+    faiss::Index* loaded_index = faiss::read_index(index_file.c_str());
+    faiss::IndexHNSWPQ* index = dynamic_cast<faiss::IndexHNSWPQ*>(loaded_index);
 
     if (!index) {
         std::cerr << "Error: Failed to load IndexHNSWPQ from " << index_file << std::endl;

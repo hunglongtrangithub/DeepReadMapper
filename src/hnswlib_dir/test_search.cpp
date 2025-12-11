@@ -6,7 +6,7 @@
 #include "utils.hpp"
 #include "vectorize.hpp"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " <index_file> <query_file> <ef> <k>" << std::endl;
         return 1;
@@ -18,7 +18,7 @@ int main(int argc, char *argv[]) {
     int k = std::stoi(argv[4]);
 
     std::cout << "[MAIN] Loading query file: " << query_file << std::endl;
-    std::vector<std::string> sequences = read_file(query_file);
+    std::vector<std::string> sequences = read_file(query_file).first;
 
     // Embed input queries
     std::cout << "[MAIN] Start inference" << std::endl;
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     // Load HNSW index
     std::cout << "[MAIN] Loading HNSW index from " << index_file << "..." << std::endl;
     hnswlib::L2Space space(Config::Build::DIM);
-    hnswlib::HierarchicalNSW<float> *index = new hnswlib::HierarchicalNSW<float>(&space, index_file);
+    hnswlib::HierarchicalNSW<float>* index = new hnswlib::HierarchicalNSW<float>(&space, index_file);
 
     std::cout << "[MAIN] Index loaded successfully!" << std::endl;
 

@@ -10,17 +10,16 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <limits>
 #include <mutex>
 #include <queue>
 
 BruteForce::BruteForce(uint32_t dim, uint64_t maxNumNodes) { vectors_.reserve(maxNumNodes); }
 
-void BruteForce::buildIndex(const std::vector<std::vector<float>> &vectors) {
+void BruteForce::buildIndex(const std::vector<std::vector<float>>& vectors) {
     this->vectors_.insert(this->vectors_.end(), vectors.begin(), vectors.end());
 }
 
-std::vector<search_result_t> BruteForce::search(const std::vector<float> &query, uint32_t k) {
+std::vector<search_result_t> BruteForce::search(const std::vector<float>& query, uint32_t k) {
     std::priority_queue<search_result_t, std::vector<search_result_t>, std::greater<search_result_t>> max_heap;
     std::mutex heap_mutex;  // Mutex to protect heap access
 
@@ -72,7 +71,7 @@ std::vector<search_result_t> BruteForce::search(const std::vector<float> &query,
     return k_nearest;
 }
 
-void BruteForce::save(const std::string &filename) {
+void BruteForce::save(const std::string& filename) {
     std::ofstream ofs(filename, std::ios::binary);
     if (!ofs.is_open()) {
         throw std::runtime_error("Cannot open file for writing: " + filename);
@@ -81,7 +80,7 @@ void BruteForce::save(const std::string &filename) {
     archive(*this);
 }
 
-BruteForce loadBruteForce(const std::string &filename) {
+BruteForce loadBruteForce(const std::string& filename) {
     BruteForce bf(0);  // Temporary object
     std::ifstream ifs(filename, std::ios::binary);
     if (!ifs.is_open()) {
