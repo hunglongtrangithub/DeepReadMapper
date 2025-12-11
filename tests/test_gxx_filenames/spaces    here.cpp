@@ -1,0 +1,1 @@
+void test_spaces_here_file() { std::cout << "Function in spaces    here.cpp executed successfully." << std::endl; }

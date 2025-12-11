@@ -1,0 +1,2 @@
+
+void test_in_slash_after_file() { std::cout << "Function in slash_after.cpp\\ executed successfully." << std::endl; }

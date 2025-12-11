@@ -1,0 +1,1 @@
+void test_in_notab_file() { std::cout << "Function in tab\\there.cpp executed successfully." << std::endl; }

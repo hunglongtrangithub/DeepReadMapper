@@ -1,0 +1,3 @@
+void test_in_newline_file() {
+    std::cout << "Function in newline\n.cpp executed successfully." << std::endl;
+}

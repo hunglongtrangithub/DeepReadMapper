@@ -1,0 +1,1 @@
+void test_in_space_before_file() { std::cout << "Function in ` space_before.cpp` executed successfully." << std::endl; }
