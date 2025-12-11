@@ -181,7 +181,7 @@ pub const DepIterator = struct {
                         // Add the dependency to the list
                         if (self.dep_buf.items.len > 0) {
                             const dep_str = self.dep_buf.items;
-                            Log.debug("Parsed dependency: {s}\n", .{dep_str});
+                            Log.debug("Parsed dependency: {s}", .{dep_str});
                             return dep_str;
                         }
                     }
@@ -194,7 +194,7 @@ pub const DepIterator = struct {
                         // End of the dependency logical line. Add the last dependency if any and stop parsing.
                         if (self.dep_buf.items.len > 0) {
                             const dep_str = self.dep_buf.items;
-                            Log.debug("Last parsed dependency: {s}\n", .{dep_str});
+                            Log.debug("Last parsed dependency: {s}", .{dep_str});
                             return dep_str;
                         }
                         break :blk true;
@@ -218,9 +218,9 @@ pub const DepIterator = struct {
         if (self.dep_buf.items.len > 0) {
             const dep_str = self.dep_buf.items;
             if (see_unescaped_newline) {
-                Log.debug("Last parsed dependency at end of logical line: {s}\n", .{dep_str});
+                Log.debug("Last parsed dependency at end of logical line: {s}", .{dep_str});
             } else {
-                Log.debug("Last parsed dependency at end of file: {s}\n", .{dep_str});
+                Log.debug("Last parsed dependency at end of file: {s}", .{dep_str});
             }
             return dep_str;
         } else {
@@ -366,7 +366,6 @@ const Builder = struct {
         };
 
         while (try dep_iter.next()) |dep| {
-            Log.debug("Checking dependency: {s}", .{dep});
             // This is a dependency file - check its timestamp
             const dep_stat = std.fs.cwd().statFile(dep) catch {
                 // If dependency file doesn't exist, force rebuild
@@ -537,7 +536,7 @@ const Builder = struct {
 
 pub fn build(b: *std.Build) !void {
     // Configure logging level from command line
-    const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "silent";
+    const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "info";
     const log_level = LogLevel.fromString(log_level_str) orelse {
         std.debug.print("Invalid log level: {s}. Valid levels: silent, error, warn, info, debug, trace\n", .{log_level_str});
         std.process.exit(1);
@@ -545,14 +544,12 @@ pub fn build(b: *std.Build) !void {
     Log.setLevel(log_level);
 
     const conda_prefix = std.posix.getenv("CONDA_PREFIX") orelse {
-        Log.err("CONDA_PREFIX not set", .{});
-        Log.info("Please activate conda environment: {s}", .{CONDA_ENV});
+        Log.err("CONDA_PREFIX not set. Please activate conda environment: {s}", .{CONDA_ENV});
         std.process.exit(1);
     };
 
     if (!std.mem.eql(u8, std.fs.path.basename(conda_prefix), CONDA_ENV)) {
-        Log.err("Incorrect conda environment: {s}", .{conda_prefix});
-        Log.info("Please activate conda environment: {s}", .{CONDA_ENV});
+        Log.err("Incorrect conda environment: {s}. Please activate conda environment: {s}", .{ conda_prefix, CONDA_ENV });
         std.process.exit(1);
     }
 
