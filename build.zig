@@ -80,6 +80,155 @@ const Log = struct {
     }
 };
 
+pub const DepIterator = struct {
+    /// The unescaped content of the dependency file after the target
+    dep_content: []const u8,
+    /// The current position in the content
+    pos: usize,
+    /// Buffer for the current dependency being parsed
+    dep_buf: std.array_list.Managed(u8),
+    /// Whether the last character was a backslash
+    last_is_backslash: bool,
+    /// Whether the iterator has reached the end
+    done: bool,
+
+    /// Find the start of dependencies after the target
+    /// If no dependencies are found or the file content is invalid, returns null
+    pub fn init(file_content: []const u8, allocator: std.mem.Allocator) !DepIterator {
+        // Find the start byte of the first dependency
+        const dep_start = find_dep_start: {
+            // Find the first colon that is followed by a space
+            const first_colon_space = blk: {
+                if (std.mem.indexOf(u8, file_content, ": ")) |pos| {
+                    break :blk pos + 2; // Start after ": "
+                } else {
+                    return error.InvalidDependencyFile; // Not a valid dependency file
+                }
+            };
+
+            // Skip any additional tabs or spaces after the colon + space pair
+            const actual_dep_start = blk: {
+                var i: usize = first_colon_space;
+                while (i < file_content.len) : (i += 1) {
+                    if (file_content[i] != ' ' and file_content[i] != '\t') {
+                        // Stop at the first non-space/tab character
+                        break :blk i;
+                    }
+                } else {
+                    // Either first_colon_space >= logical_line.len
+                    // or there are only spaces/tabs after the colon + space pair
+                    // => No dependencies found
+                    // Set iterator as done immediately
+                    return DepIterator{
+                        .dep_content = "",
+                        .pos = 0,
+                        .dep_buf = std.array_list.Managed(u8).init(allocator),
+                        .last_is_backslash = false,
+                        .done = true,
+                    };
+                }
+            };
+            break :find_dep_start actual_dep_start;
+        };
+
+        // Get the content after dep_start
+        // dep_start is guaranteed to be within bounds from above checks
+        const after_target_content = file_content[dep_start..];
+        return DepIterator{
+            .dep_content = after_target_content,
+            .pos = 0,
+            .dep_buf = std.array_list.Managed(u8).init(allocator),
+            .last_is_backslash = false,
+            .done = false,
+        };
+    }
+
+    pub fn deinit(self: *DepIterator) void {
+        self.dep_buf.deinit();
+    }
+
+    /// Get the next dependency from the iterator.
+    /// Returns null when there are no more dependencies.
+    /// The returned slice is owned by the iterator.
+    pub fn next(self: *DepIterator) !?[]const u8 {
+        if (self.done) return null;
+
+        self.dep_buf.clearAndFree();
+        self.last_is_backslash = false;
+
+        const see_unescaped_newline: bool = blk: while (self.pos < self.dep_content.len) : (self.pos += 1) {
+            const c = self.dep_content[self.pos];
+
+            switch (c) {
+                '\\' => {
+                    if (self.last_is_backslash) {
+                        // Consecutive backslashes are considered part of the dependency, so
+                        // "////" or "multi_slash\\\\.cpp" are valid dependency names
+                        try self.dep_buf.append(c);
+                    } else {
+                        self.last_is_backslash = true;
+                    }
+                },
+                ' ', '\t' => {
+                    if (self.last_is_backslash) {
+                        // Handle escaped space/tab
+                        try self.dep_buf.append(c);
+                        self.last_is_backslash = false;
+                    } else {
+                        // End of dependency
+                        // dep.items.len can be zero if there are multiple spaces/tabs between dependencies,
+                        // so we have to guard against that
+                        // Add the dependency to the list
+                        if (self.dep_buf.items.len > 0) {
+                            const dep_str = self.dep_buf.items;
+                            Log.debug("Parsed dependency: {s}\n", .{dep_str});
+                            return dep_str;
+                        }
+                    }
+                },
+                '\n' => {
+                    if (self.last_is_backslash) {
+                        // Line continuation, do not add anything
+                        self.last_is_backslash = false;
+                    } else {
+                        // End of the dependency logical line. Add the last dependency if any and stop parsing.
+                        if (self.dep_buf.items.len > 0) {
+                            const dep_str = self.dep_buf.items;
+                            Log.debug("Last parsed dependency: {s}\n", .{dep_str});
+                            return dep_str;
+                        }
+                        break :blk true;
+                    }
+                },
+                else => {
+                    if (self.last_is_backslash) {
+                        // Previous backslash was not escaping a space/tab or newline, so it is part of the dependency
+                        try self.dep_buf.append('\\');
+                        self.last_is_backslash = false;
+                    }
+                    try self.dep_buf.append(c);
+                },
+            }
+        } else {
+            break :blk false;
+        };
+
+        // End of content reached. Mark as done.
+        self.done = true;
+        if (self.dep_buf.items.len > 0) {
+            const dep_str = self.dep_buf.items;
+            if (see_unescaped_newline) {
+                Log.debug("Last parsed dependency at end of logical line: {s}\n", .{dep_str});
+            } else {
+                Log.debug("Last parsed dependency at end of file: {s}\n", .{dep_str});
+            }
+            return dep_str;
+        } else {
+            return null;
+        }
+    }
+};
+
 /// Builder struct that encapsulates all build functionality
 const Builder = struct {
     /// Zig build instance
@@ -176,99 +325,58 @@ const Builder = struct {
 
     /// Parse a dependency (.d) file and check if any dependency is newer than the object file.
     ///
-    /// Reads the dependency file, handles line continuations, and checks timestamps
-    /// of all listed dependencies. If any dependency is newer than the object file,
-    /// returns true to indicate a rebuild is needed.
-    ///
     /// Parameters:
     /// - `dep_path`: Path to the dependency file.
     /// - `obj_mtime`: Modification time of the object file.
     ///
     /// Returns: true if any dependency is newer than the object file, false otherwise.
-    fn checkDependencyTimestamps(self: Self, dep_path: []const u8, obj_mtime: i128) !bool {
-        Log.debug("Checking dependencies in {s}", .{dep_path});
-        const file = std.fs.cwd().openFile(dep_path, .{}) catch {
-            Log.debug("Could not open dependency file: {s}", .{dep_path});
-            return true; // Force rebuild on open failure
+    fn checkDependencyTimestamps(self: Self, file_path: []const u8, obj_mtime: i128) !bool {
+        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+            Log.debug("Could not open dependency file: {s}", .{file_path});
+            return err;
         };
         defer file.close();
 
-        // Buffer to read the dependency file
+        // Buffer to hold file content
+        var file_content_buf = std.array_list.Managed(u8).init(self.builder.allocator);
+        defer file_content_buf.deinit();
+
+        // Read the entire file content
         var reader_buf: [1024]u8 = undefined;
-
-        // Buffer to hold logical line (handling line continuations with backslashes)
-        var logical_line_buf = std.array_list.Managed(u8).init(self.builder.allocator);
-        defer logical_line_buf.deinit();
-
-        // Flag to check if last char was backslash
-        var last_was_backslash = false;
-
         while (true) {
-            Log.trace("Reading chunk from dependency file", .{});
-            const bytes_read = file.readAll(&reader_buf) catch {
-                Log.debug("Failed to read dependency file: {s}", .{dep_path});
-                return true; // Force rebuild on read failure
+            const bytes_read = file.readAll(&reader_buf) catch |err| {
+                Log.debug("Failed to read dependency file: {s}", .{file_path});
+                return err;
             };
 
-            // Break at end of file
+            // Reached end of file
             if (bytes_read == 0) break;
 
-            Log.trace("Read {d} bytes", .{bytes_read});
-
-            for (reader_buf[0..bytes_read]) |b| {
-                if (last_was_backslash) {
-                    // Expect newline
-                    if (b == '\n') {
-                        // Skip both: do NOT append either char
-                        Log.trace("Skipping line continuation", .{});
-                        last_was_backslash = false;
-                        continue;
-                    } else {
-                        Log.err("Invalid dependency file content: '\\' not followed by newline in {s}", .{dep_path});
-                        std.process.exit(1);
-                    }
-                }
-
-                if (b == '\\') {
-                    Log.trace("Found line continuation", .{});
-                    last_was_backslash = true;
-                    continue;
-                }
-
-                if (b == '\n') {
-                    // normal newline terminates the logical line
-                    Log.trace("End of logical line", .{});
-                    break;
-                }
-                try logical_line_buf.append(b);
-            }
+            // Append all read bytes to logical line buffer
+            try file_content_buf.appendSlice(reader_buf[0..bytes_read]);
         }
 
-        // Get the logical line
-        const line = logical_line_buf.items;
-        Log.trace("Dependency line: {s}", .{line});
+        // Get the full file content as a slice
+        const file_content = try file_content_buf.toOwnedSlice();
 
-        // Split by whitespace
-        var it = std.mem.tokenizeAny(u8, line, " \t\r\n ");
+        Log.debug("Checking dependencies in {s}", .{file_path});
+        var dep_iter = DepIterator.init(file_content, self.builder.allocator) catch |err| {
+            Log.debug("Failed to parse dependency file: {s}", .{file_path});
+            return err;
+        };
 
-        while (it.next()) |tok| {
-            // Check if token is at the end of the line
-            if (std.mem.endsWith(u8, tok, ":")) {
-                Log.debug("Skipping target token: {s}", .{tok});
-                continue; // Skip target
-            }
-
-            Log.debug("Checking dependency: {s}", .{tok});
+        while (try dep_iter.next()) |dep| {
+            Log.debug("Checking dependency: {s}", .{dep});
             // This is a dependency file - check its timestamp
-            const dep_stat = std.fs.cwd().statFile(tok) catch {
+            const dep_stat = std.fs.cwd().statFile(dep) catch {
                 // If dependency file doesn't exist, force rebuild
-                Log.debug("Dependency file missing: {s}", .{tok});
+                Log.debug("Dependency file missing: {s}", .{dep});
                 return true;
             };
 
             if (dep_stat.mtime > obj_mtime) {
                 // Dependency is newer than object file, need to rebuild
-                Log.debug("Dependency {s} is newer than object", .{tok});
+                Log.debug("Dependency {s} is newer than object", .{dep});
                 return true;
             }
         }
@@ -328,8 +436,8 @@ const Builder = struct {
         cmd.addArgs(&[_][]const u8{ "-o", self.builder.fmt("{s}/{s}.o", .{ OBJ_OUT, obj_name }) });
 
         // Add dependency file generation for incremental builds
-        cmd.addArg("-MMD");
-        cmd.addArg("-MP");
+        cmd.addArg("-MMD"); // Generate dependency file
+        cmd.addArg("-MP"); // Prevent errors for missing headers
         cmd.addArg(self.builder.fmt("-MF{s}/{s}.d", .{ OBJ_OUT, obj_name }));
 
         return cmd;
@@ -565,4 +673,125 @@ pub fn build(b: *std.Build) !void {
     const clean_step = b.step("clean", "Clean build artifacts");
     const clean_cmd = b.addSystemCommand(&[_][]const u8{ "rm", "-rf", BIN_OUT, OBJ_OUT });
     clean_step.dependOn(&clean_cmd.step);
+}
+
+test "basic dependencies" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: dep1.cpp dep2.h dep3.hpp\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("dep1.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep2.h", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep3.hpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "dependencies with spaces and tabs" {
+    const allocator = std.testing.allocator;
+    const content =
+        "zig-out/obj/test:_b901a52b31646cdd4a0c2f7db1140fa3.o: \\\n" ++
+        " tests/test_gxx_filenames/test:.cpp \\\n" ++
+        " tests/test_gxx_filenames/\\ space_before.cpp \\\n" ++
+        " tests/test_gxx_filenames/space_after.cpp\\  \\\n" ++
+        " tests/test_gxx_filenames/spaces\\ \\ \\ \\ here.cpp \\\n" ++
+        " tests/test_gxx_filenames/tab\\\there.cpp \\\n" ++
+        " tests/test_gxx_filenames/tab\\there.cpp\n" ++
+        "tests/test_gxx_filenames/\\ space_before.cpp:\n" ++
+        "tests/test_gxx_filenames/space_after.cpp\\ :\n" ++
+        "tests/test_gxx_filenames/spaces\\ \\ \\ \\ here.cpp:\n" ++
+        "tests/test_gxx_filenames/tab\\\there.cpp:\n" ++
+        "tests/test_gxx_filenames/tab\\there.cpp:\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/test:.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/ space_before.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/space_after.cpp ", (try it.next()).?);
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/spaces    here.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/tab\there.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("tests/test_gxx_filenames/tab\\there.cpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "escaped spaces" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: dep\\ with\\ space.cpp another.h\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("dep with space.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("another.h", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "line continuation" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: dep1.cpp \\\n dep2.h \\\n dep3.hpp \\\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("dep1.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep2.h", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep3.hpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "escaped tabs" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: file\\\twith\\\ttab.cpp\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("file\twith\ttab.cpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "consecutive backslashes" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: path\\\\with\\\\backslash.cpp\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("path\\\\with\\\\backslash.cpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "multiple spaces and tabs" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: dep1.cpp        dep2.h      dep3.hpp\n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("dep1.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep2.h", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep3.hpp", (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "empty dependency list" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: \n";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expect((try it.next()) == null);
+}
+
+test "no colon followed by space" {
+    const allocator = std.testing.allocator;
+    const invalid_contents: [4][]const u8 = .{ "invalid content without colon\n", "target.o:\n", "target.o\n", "target.o dep1.cpp\n" };
+    for (invalid_contents) |invalid_content| {
+        try std.testing.expectError(error.InvalidDependencyFile, DepIterator.init(invalid_content, allocator));
+    }
+}
+
+test "no end of logical line" {
+    const allocator = std.testing.allocator;
+    const content = "target.o: dep1.cpp dep2.h";
+    var it = try DepIterator.init(content, allocator);
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("dep1.cpp", (try it.next()).?);
+    try std.testing.expectEqualStrings("dep2.h", (try it.next()).?);
 }
