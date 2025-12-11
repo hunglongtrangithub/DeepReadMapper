@@ -42,7 +42,7 @@ pub const Builder = struct {
 
     /// Convert source path to guaranteed-unique object file name (without extension) using SHA256 hash
     ///
-    /// Format: {basename}_{hash}
+    /// Format: {hash}_{basename}
     pub fn sourceToObjectName(self: Self, source_path: []const u8) []const u8 {
         // Create a hash of the full source path
         var digest: [32]u8 = undefined;
@@ -54,8 +54,8 @@ pub const Builder = struct {
         // Get the base filename (without extension) for readability
         const basename = std.fs.path.stem(std.fs.path.basename(source_path));
 
-        // Combine: {basename}_{hash}
-        return self.builder.fmt("{s}_{s}", .{ basename, hex_hash });
+        // Combine: {hash}_{basename}
+        return self.builder.fmt("{s}_{s}", .{ hex_hash, basename });
     }
 
     /// Check if object file needs rebuilding based on timestamps

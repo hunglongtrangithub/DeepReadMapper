@@ -60,7 +60,7 @@ pub fn build(b: *std.Build) !void {
     };
 
     const common_flags = [_][]const u8{
-        "-ftime-report",
+        // "-ftime-report",
         "-std=c++17",
         "-O3",
         "-fopenmp",
