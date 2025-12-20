@@ -8,14 +8,7 @@ const CppBuilder = cpp_build.CppBuilder;
 
 /// Expected conda environment name that should be activated
 const CONDA_ENV = "DeepReadMapper";
-/// Highest-level build output directory
-const ZIG_OUT = "zig-out";
-/// Output directory for binaries
-const BIN_OUT = ZIG_OUT ++ "/bin";
-/// Output directory for object files and dependency files
-const OBJ_OUT = ZIG_OUT ++ "/obj";
 
-/// Build function for C++ components
 pub fn build(b: *std.Build) !void {
     // Configure logging level from command line
     const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "info";
@@ -45,7 +38,16 @@ pub fn build(b: *std.Build) !void {
     Log.info("Using g++ path: {s}", .{gxx_path});
 
     // Initialize Builder
-    const builder = CppBuilder.init(b, gxx_path, conda_prefix, BIN_OUT, OBJ_OUT);
+    const bin_out = b.getInstallPath(.bin, "");
+    const obj_out = b.getInstallPath(.prefix, "obj");
+    const lib_out = b.getInstallPath(.lib, "");
+    const builder = CppBuilder.init(
+        b,
+        gxx_path,
+        conda_prefix,
+        bin_out,
+        obj_out,
+    );
 
     const common_sources = [_][]const u8{
         "external/cnpy/cnpy.cpp",
@@ -87,7 +89,7 @@ pub fn build(b: *std.Build) !void {
     var all_object_steps = std.array_list.Managed(*std.Build.Step.Run).init(b.allocator);
 
     for (common_sources) |source| {
-        const obj_path = b.fmt("{s}/{s}.o", .{ OBJ_OUT, builder.sourceToObjectName(source) });
+        const obj_path = b.fmt("{s}/{s}.o", .{ obj_out, builder.sourceToObjectName(source) });
         try all_object_files.append(obj_path);
 
         if (try builder.createConditionalObjectCmd(source, &common_flags, &common_includes)) |obj_cmd| {
@@ -151,6 +153,6 @@ pub fn build(b: *std.Build) !void {
 
     // Clean step to remove build artifacts
     const clean_step = b.step("clean", "Clean build artifacts");
-    const clean_cmd = b.addSystemCommand(&[_][]const u8{ "rm", "-rf", BIN_OUT, OBJ_OUT });
+    const clean_cmd = b.addSystemCommand(&[_][]const u8{ "rm", "-rf", bin_out, obj_out, lib_out });
     clean_step.dependOn(&clean_cmd.step);
 }

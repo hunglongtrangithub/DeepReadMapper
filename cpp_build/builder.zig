@@ -199,18 +199,15 @@ pub const CppBuilder = struct {
     fn createObjectCmd(self: Self, source: []const u8, flags: []const []const u8, includes: []const []const u8) *std.Build.Step.Run {
         const cmd = self.builder.addSystemCommand(&[_][]const u8{self.gxx_path});
 
-        for (flags) |flag| {
-            cmd.addArg(flag);
-        }
+        cmd.addArgs(flags);
 
         // Compile only
         cmd.addArg("-c");
 
-        for (includes) |inc| {
-            cmd.addArg(inc);
-        }
+        cmd.addArgs(includes);
 
         cmd.addArg(self.builder.fmt("-isystem{s}/include", .{self.conda_prefix}));
+
         cmd.addArg(source);
 
         // Get object file name based on source path
@@ -239,16 +236,11 @@ pub const CppBuilder = struct {
 
         cmd.addArgs(flags);
 
-        for (all_object_files) |obj| {
-            cmd.addArg(obj);
-        }
+        cmd.addArgs(all_object_files);
 
         cmd.addArg(self.builder.fmt("-L{s}/lib", .{self.conda_prefix}));
-        cmd.addArgs(&[_][]const u8{});
 
-        for (extra_libs) |lib| {
-            cmd.addArg(lib);
-        }
+        cmd.addArgs(extra_libs);
 
         cmd.addArgs(&[_][]const u8{ "-o", self.builder.fmt("{s}/{s}", .{ self.bin_out, output_name }) });
 
@@ -259,8 +251,8 @@ pub const CppBuilder = struct {
     ///
     /// Parameters:
     /// - `sources`: list of source files to compile
-    /// - `common_objs`: optional list of precompiled object files to link against
-    /// - `common_obj_steps`: optional list of build steps for common object files
+    /// - `common_objs`: list of precompiled object files to link against
+    /// - `common_obj_steps`: list of build steps for common object files
     /// - `output`: name of the output executable
     /// - `libs`: list of libraries to link against
     /// - `flags`: list of flags for both compilation and linking
@@ -270,8 +262,8 @@ pub const CppBuilder = struct {
     pub fn build(
         self: Self,
         sources: []const []const u8,
-        common_objs: ?[]const []const u8,
-        common_obj_steps: ?[]const *std.Build.Step.Run,
+        common_objs: []const []const u8,
+        common_obj_steps: []const *std.Build.Step.Run,
         output: []const u8,
         libs: []const []const u8,
         flags: []const []const u8,
@@ -280,11 +272,9 @@ pub const CppBuilder = struct {
         var exe_objects = std.array_list.Managed([]const u8).init(self.builder.allocator);
         var exe_obj_steps = std.array_list.Managed(*std.Build.Step.Run).init(self.builder.allocator);
 
-        // Add common objects if provided
-        if (common_objs) |objs| {
-            for (objs) |obj| {
-                try exe_objects.append(obj);
-            }
+        // Add common objects
+        for (common_objs) |obj| {
+            try exe_objects.append(obj);
         }
 
         // Compile sources with incremental checking
@@ -301,11 +291,9 @@ pub const CppBuilder = struct {
         const link_cmd = self.createLinkCmd(flags, exe_objects.items, output, libs);
         link_cmd.step.dependOn(&self.mkdir_bin_cmd.step);
 
-        // Depend on common object compilations if provided
-        if (common_obj_steps) |steps| {
-            for (steps) |obj_step| {
-                link_cmd.step.dependOn(&obj_step.step);
-            }
+        // Depend on common object compilations
+        for (common_obj_steps) |obj_step| {
+            link_cmd.step.dependOn(&obj_step.step);
         }
 
         // Depend on source-specific object compilations
