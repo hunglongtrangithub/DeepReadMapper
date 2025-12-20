@@ -1,10 +1,10 @@
 const std = @import("std");
 const logger = @import("zig/logger.zig");
-const builder_mod = @import("zig/builder.zig");
+const cpp_build = @import("zig/cpp_build.zig");
 
 const Log = logger.Log;
 const LogLevel = logger.LogLevel;
-const Builder = builder_mod.Builder;
+const CppBuilder = cpp_build.CppBuilder;
 
 /// Expected conda environment name that should be activated
 const CONDA_ENV = "DeepReadMapper";
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) !void {
     Log.info("Using g++ path: {s}", .{gxx_path});
 
     // Initialize Builder
-    const builder = Builder.init(b, gxx_path, conda_prefix, BIN_OUT, OBJ_OUT);
+    const builder = CppBuilder.init(b, gxx_path, conda_prefix, BIN_OUT, OBJ_OUT);
 
     const common_sources = [_][]const u8{
         "external/cnpy/cnpy.cpp",

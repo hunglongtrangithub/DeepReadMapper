@@ -6,7 +6,8 @@ const Log = logger.Log;
 const DepIterator = parser.DepIterator;
 
 /// Builder struct that encapsulates all build functionality
-pub const Builder = struct {
+/// for compiling and linking C++ code with incremental builds.
+pub const CppBuilder = struct {
     /// Zig build instance
     builder: *std.Build,
     /// Path to g++ compiler
