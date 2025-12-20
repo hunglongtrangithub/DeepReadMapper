@@ -1,6 +1,6 @@
 const std = @import("std");
-const logger = @import("zig/logger.zig");
-const cpp_build = @import("zig/cpp_build.zig");
+const logger = @import("cpp_build/logger.zig");
+const cpp_build = @import("cpp_build/builder.zig");
 
 const Log = logger.Log;
 const LogLevel = logger.LogLevel;
@@ -15,6 +15,7 @@ const BIN_OUT = ZIG_OUT ++ "/bin";
 /// Output directory for object files and dependency files
 const OBJ_OUT = ZIG_OUT ++ "/obj";
 
+/// Build function for C++ components
 pub fn build(b: *std.Build) !void {
     // Configure logging level from command line
     const log_level_str = b.option([]const u8, "log", "Set log level (silent, error, warn, info, debug, trace)") orelse "info";
