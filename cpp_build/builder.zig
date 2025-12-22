@@ -238,7 +238,10 @@ pub const CppBuilder = struct {
 
         cmd.addArgs(all_object_files);
 
+        // tell linker where to find libraries at link-time
         cmd.addArg(self.builder.fmt("-L{s}/lib", .{self.conda_prefix}));
+        // tell the executable where to find libraries at runtime
+        cmd.addArg(self.builder.fmt("-Wl,-rpath,{s}/lib", .{self.conda_prefix}));
 
         cmd.addArgs(extra_libs);
 

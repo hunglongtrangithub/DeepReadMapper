@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) !void {
         all_object_files.items,
         all_object_steps.items,
         "pipeline",
-        &[_][]const u8{ "-lopenvino", "-lomp", "-lfaiss" },
+        &[_][]const u8{ "-lopenvino", "-lgomp", "-lfaiss" },
         &common_flags,
         &common_includes,
     );

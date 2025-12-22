@@ -12,6 +12,7 @@ dependencies:
   - faiss-cpu
   - zlib
   - llvm-openmp
+  - libopenblas=*=*openmp* # Ensure OpenBLAS is built with OpenMP support
   - cereal
 
   # Linting and formatting

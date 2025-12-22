@@ -25,7 +25,7 @@ Make sure [Conda](https://www.anaconda.com/docs/getting-started/miniconda/instal
    zig build
    ```
 
-All the binaries all in `zig-out/bin` directory.
+All of the executables are in `zig-out/bin` directory.
 
 ## Usage
 
