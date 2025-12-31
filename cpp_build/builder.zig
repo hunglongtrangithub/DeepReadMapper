@@ -26,6 +26,13 @@ pub const CppBuilder = struct {
     const Self = @This();
 
     /// Initialize a new Builder instance
+    ///
+    /// Parameters:
+    /// - `builder`: Zig's builder instance
+    /// - `gxx_path`: Absolute path to the g++ executable
+    /// - `conda_prefix`: Absolute path to the conda prefix (the currently active conda environment)
+    /// - `bin_out`: The path to the directory that will contain binary files (either absolute or relative to `build.zig`'s directory)
+    /// - `obj_out`: The path to the directory that will contain object files (either absolute or relative to `build.zig`'s directory)
     pub fn init(builder: *std.Build, gxx_path: []const u8, conda_prefix: []const u8, bin_out: []const u8, obj_out: []const u8) Self {
         const mkdir_bin_cmd = builder.addSystemCommand(&[_][]const u8{ "mkdir", "-p", bin_out });
         const mkdir_obj_cmd = builder.addSystemCommand(&[_][]const u8{ "mkdir", "-p", obj_out });

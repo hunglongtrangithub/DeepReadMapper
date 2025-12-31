@@ -30,10 +30,10 @@ pub fn build(b: *std.Build) !void {
 
     Log.info("Using conda prefix: {s}", .{conda_prefix});
 
-    const gxx_path = b.findProgram(&[_][]const u8{"g++"}, &[_][]const u8{
+    const gxx_path = try b.findProgram(&[_][]const u8{"g++"}, &[_][]const u8{
         b.fmt("{s}/bin", .{conda_prefix}),
         "/usr/bin",
-    }) catch "g++";
+    });
 
     Log.info("Using g++ path: {s}", .{gxx_path});
 
