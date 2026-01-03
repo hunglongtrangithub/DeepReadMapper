@@ -128,8 +128,8 @@ pub const CppBuilder = struct {
         defer file.close();
 
         // Buffer to hold file content
-        var file_content_buf = std.array_list.Managed(u8).init(self.builder.allocator);
-        defer file_content_buf.deinit();
+        var file_content_buf = std.ArrayList(u8){};
+        defer file_content_buf.deinit(self.builder.allocator);
 
         // Read the entire file content
         var reader_buf: [1024]u8 = undefined;
@@ -143,11 +143,11 @@ pub const CppBuilder = struct {
             if (bytes_read == 0) break;
 
             // Append all read bytes to logical line buffer
-            try file_content_buf.appendSlice(reader_buf[0..bytes_read]);
+            try file_content_buf.appendSlice(self.builder.allocator, reader_buf[0..bytes_read]);
         }
 
         // Get the full file content as a slice
-        const file_content = try file_content_buf.toOwnedSlice();
+        const file_content = try file_content_buf.toOwnedSlice(self.builder.allocator);
 
         Log.debug("Checking dependencies in {s}", .{file_path});
         var dep_iter = DepIterator.init(file_content, self.builder.allocator) catch |err| {
@@ -279,22 +279,22 @@ pub const CppBuilder = struct {
         flags: []const []const u8,
         includes: []const []const u8,
     ) !*std.Build.Step.Run {
-        var exe_objects = std.array_list.Managed([]const u8).init(self.builder.allocator);
-        var exe_obj_steps = std.array_list.Managed(*std.Build.Step.Run).init(self.builder.allocator);
+        var exe_objects = std.ArrayList([]const u8){};
+        var exe_obj_steps = std.ArrayList(*std.Build.Step.Run){};
 
         // Add common objects
         for (common_objs) |obj| {
-            try exe_objects.append(obj);
+            try exe_objects.append(self.builder.allocator, obj);
         }
 
         // Compile sources with incremental checking
         for (sources) |source| {
             const obj_path = self.builder.fmt("{s}/{s}.o", .{ self.obj_out, self.sourceToObjectName(source) });
-            try exe_objects.append(obj_path);
+            try exe_objects.append(self.builder.allocator, obj_path);
 
             if (try self.createConditionalObjectCmd(source, flags, includes)) |obj_cmd| {
                 obj_cmd.step.dependOn(&self.mkdir_obj_cmd.step);
-                try exe_obj_steps.append(obj_cmd);
+                try exe_obj_steps.append(self.builder.allocator, obj_cmd);
             }
         }
 

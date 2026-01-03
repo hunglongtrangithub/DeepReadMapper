@@ -4,12 +4,16 @@ const logger = @import("logger.zig");
 const Log = logger.Log;
 
 pub const DepIterator = struct {
+    const Self = @This();
+
     /// The unescaped content of the dependency file after the target
     dep_content: []const u8,
     /// The current position in the content
     pos: usize,
     /// Buffer for the current dependency being parsed
-    dep_buf: std.array_list.Managed(u8),
+    dep_buf: std.ArrayList(u8),
+    /// Allocator for the dependency buffer
+    allocator: std.mem.Allocator,
     /// Whether the last character was a backslash
     last_is_backslash: bool,
     /// Whether the iterator has reached the end
@@ -17,7 +21,7 @@ pub const DepIterator = struct {
 
     /// Find the start of dependencies after the target
     /// If no dependencies are found or the file content is invalid, returns null
-    pub fn init(file_content: []const u8, allocator: std.mem.Allocator) !DepIterator {
+    pub fn init(file_content: []const u8, allocator: std.mem.Allocator) !Self {
         // Find the start byte of the first dependency
         const dep_start = find_dep_start: {
             // Find the first colon that is followed by a space
@@ -42,10 +46,11 @@ pub const DepIterator = struct {
                     // or there are only spaces/tabs after the colon + space pair
                     // => No dependencies found
                     // Set iterator as done immediately
-                    return DepIterator{
+                    return Self{
                         .dep_content = "",
                         .pos = 0,
-                        .dep_buf = std.array_list.Managed(u8).init(allocator),
+                        .dep_buf = std.ArrayList(u8){},
+                        .allocator = allocator,
                         .last_is_backslash = false,
                         .done = true,
                     };
@@ -57,26 +62,27 @@ pub const DepIterator = struct {
         // Get the content after dep_start
         // dep_start is guaranteed to be within bounds from above checks
         const after_target_content = file_content[dep_start..];
-        return DepIterator{
+        return Self{
             .dep_content = after_target_content,
             .pos = 0,
-            .dep_buf = std.array_list.Managed(u8).init(allocator),
+            .dep_buf = std.ArrayList(u8){},
+            .allocator = allocator,
             .last_is_backslash = false,
             .done = false,
         };
     }
 
-    pub fn deinit(self: *DepIterator) void {
-        self.dep_buf.deinit();
+    pub fn deinit(self: *Self) void {
+        self.dep_buf.deinit(self.allocator);
     }
 
     /// Get the next dependency from the iterator.
     /// Returns null when there are no more dependencies.
     /// The returned slice is owned by the iterator.
-    pub fn next(self: *DepIterator) !?[]const u8 {
+    pub fn next(self: *Self) !?[]const u8 {
         if (self.done) return null;
 
-        self.dep_buf.clearAndFree();
+        self.dep_buf.clearAndFree(self.allocator);
         self.last_is_backslash = false;
 
         const see_unescaped_newline: bool = blk: while (self.pos < self.dep_content.len) : (self.pos += 1) {
@@ -87,7 +93,7 @@ pub const DepIterator = struct {
                     if (self.last_is_backslash) {
                         // Consecutive backslashes are considered part of the dependency, so
                         // "////" or "multi_slash\\\\.cpp" are valid dependency names
-                        try self.dep_buf.append(c);
+                        try self.dep_buf.append(self.allocator, c);
                     } else {
                         self.last_is_backslash = true;
                     }
@@ -95,7 +101,7 @@ pub const DepIterator = struct {
                 ' ', '\t' => {
                     if (self.last_is_backslash) {
                         // Handle escaped space/tab
-                        try self.dep_buf.append(c);
+                        try self.dep_buf.append(self.allocator, c);
                         self.last_is_backslash = false;
                     } else {
                         // End of dependency
@@ -126,10 +132,10 @@ pub const DepIterator = struct {
                 else => {
                     if (self.last_is_backslash) {
                         // Previous backslash was not escaping a space/tab or newline, so it is part of the dependency
-                        try self.dep_buf.append('\\');
+                        try self.dep_buf.append(self.allocator, '\\');
                         self.last_is_backslash = false;
                     }
-                    try self.dep_buf.append(c);
+                    try self.dep_buf.append(self.allocator, c);
                 },
             }
         } else {
