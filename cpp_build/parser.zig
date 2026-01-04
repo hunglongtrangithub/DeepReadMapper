@@ -14,10 +14,6 @@ pub const DepIterator = struct {
     pos: usize,
     /// Buffer for the current dependency being parsed
     dep_buf: std.ArrayList(u8),
-    /// Use stack allocation for small dependencies (mostly within path length limits)
-    fallback: std.heap.StackFallbackAllocator(std.fs.max_path_bytes),
-    /// Initially null, will be set on the first call to next()
-    allocator: ?std.mem.Allocator = null,
     /// Whether the last character was a backslash
     last_is_backslash: bool,
     /// Whether the iterator has reached the end
@@ -54,7 +50,6 @@ pub const DepIterator = struct {
                         .dep_content = "",
                         .pos = 0,
                         .dep_buf = std.ArrayList(u8).empty,
-                        .fallback = std.heap.stackFallback(std.fs.max_path_bytes, std.heap.page_allocator),
                         .last_is_backslash = false,
                         .done = true,
                     };
@@ -70,30 +65,22 @@ pub const DepIterator = struct {
             .dep_content = after_target_content,
             .pos = 0,
             .dep_buf = std.ArrayList(u8).empty,
-            .fallback = std.heap.stackFallback(std.fs.max_path_bytes, std.heap.page_allocator),
             .last_is_backslash = false,
             .done = false,
         };
     }
 
-    pub fn deinit(self: *Self) void {
-        // We only deinit if the allocator was actually set
-        if (self.allocator) |alloc| {
-            self.dep_buf.deinit(alloc);
-        }
+    /// Deinitialize the iterator and free any allocated memory.
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        self.dep_buf.deinit(allocator);
     }
 
     /// Get the next dependency from the iterator.
     /// Returns null when there are no more dependencies.
+    /// Allocator is used to allocate memory for the dependency string.
     /// The returned slice is owned by the iterator.
-    pub fn next(self: *Self) !?[]const u8 {
+    pub fn next(self: *Self, allocator: std.mem.Allocator) !?[]const u8 {
         if (self.done) return null;
-
-        // One-time setup of allocator
-        if (self.allocator == null) {
-            self.allocator = self.fallback.get();
-        }
-        const allocator = self.allocator.?;
 
         // Reset the dependency buffer for the next dependency
         self.dep_buf.clearRetainingCapacity();

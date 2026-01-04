@@ -154,9 +154,12 @@ pub const CppBuilder = struct {
             Log.debug("Failed to parse dependency file: {s}", .{file_path});
             return err;
         };
-        defer dep_iter.deinit();
 
-        while (try dep_iter.next()) |dep| {
+        // PERF: Since dependency paths are usually short, use stack allocator for iteration and fall back if needed
+        var fallback = std.heap.stackFallback(std.fs.max_path_bytes, self.builder.allocator);
+        const allocator = fallback.get();
+        defer dep_iter.deinit(allocator);
+        while (try dep_iter.next(allocator)) |dep| {
             // This is a dependency file - check its timestamp
             const dep_stat = std.fs.cwd().statFile(dep) catch {
                 // If dependency file doesn't exist, force rebuild
