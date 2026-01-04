@@ -128,7 +128,7 @@ pub const CppBuilder = struct {
         defer file.close();
 
         // Buffer to hold file content
-        var file_content_buf = std.ArrayList(u8){};
+        var file_content_buf = std.ArrayList(u8).empty;
         defer file_content_buf.deinit(self.builder.allocator);
 
         // Read the entire file content
@@ -147,13 +147,14 @@ pub const CppBuilder = struct {
         }
 
         // Get the full file content as a slice
-        const file_content = try file_content_buf.toOwnedSlice(self.builder.allocator);
+        const file_content = file_content_buf.items;
 
         Log.debug("Checking dependencies in {s}", .{file_path});
-        var dep_iter = DepIterator.init(file_content, self.builder.allocator) catch |err| {
+        var dep_iter = DepIterator.init(file_content) catch |err| {
             Log.debug("Failed to parse dependency file: {s}", .{file_path});
             return err;
         };
+        defer dep_iter.deinit();
 
         while (try dep_iter.next()) |dep| {
             // This is a dependency file - check its timestamp
@@ -279,8 +280,8 @@ pub const CppBuilder = struct {
         flags: []const []const u8,
         includes: []const []const u8,
     ) !*std.Build.Step.Run {
-        var exe_objects = std.ArrayList([]const u8){};
-        var exe_obj_steps = std.ArrayList(*std.Build.Step.Run){};
+        var exe_objects = std.ArrayList([]const u8).empty;
+        var exe_obj_steps = std.ArrayList(*std.Build.Step.Run).empty;
 
         // Add common objects
         for (common_objs) |obj| {
