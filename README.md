@@ -4,7 +4,9 @@ DeepReadMapper is a deep learning-based gene alignment tool that uses vector sim
 
 ## Installation
 
-Make sure [Conda](https://www.anaconda.com/docs/getting-started/miniconda/install) is available.
+Make sure [Conda](https://www.anaconda.com/docs/getting-started/miniconda/install) is available. 
+
+Run these commands below at the root of the project directory:
 
 1. Create conda environment
 
